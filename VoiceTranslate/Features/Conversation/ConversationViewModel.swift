@@ -10,7 +10,7 @@ final class ConversationViewModel {
     var isRecording = false
     var isLoadingModel = false
     var currentEngine: ASREngine = ASREngine.platformDefault
-    var loadedEngine: ASREngine?  // Which engine is actually loaded in memory
+    var loadedEngine: ASREngine?
     var errorMessage: String?
 
     var translationConfig: TranslationSession.Configuration?
@@ -27,10 +27,8 @@ final class ConversationViewModel {
         }
     }
 
-    /// The 3 languages shown in the main view quick selector
     var activeLanguages: [SupportedLanguage] = SupportedLanguage.defaultActiveLanguages {
         didSet {
-            // Ensure source/target are still in the active set
             if !activeLanguages.contains(sourceLanguage) {
                 sourceLanguage = activeLanguages.first ?? .english
             }
@@ -60,6 +58,7 @@ final class ConversationViewModel {
 
     func setEngine(_ engine: ASREngine) {
         guard engine != currentEngine else { return }
+        print("[VM] Switching engine: \(currentEngine.displayName) → \(engine.displayName)")
         currentEngine = engine
         asrService = nil
         loadedEngine = nil
@@ -69,24 +68,30 @@ final class ConversationViewModel {
     func startListening() {
         guard !isRecording, !isProcessing, !isLoadingModel else { return }
 
-        // For non-WhisperKit downloadable models, check download state
-        if currentEngine.requiresModelDownload && !currentEngine.isWhisperKit {
-            guard downloader.state(for: currentEngine) == .downloaded else {
-                errorMessage = "Model not downloaded yet"
-                return
+        // Check download state for all downloadable models
+        if currentEngine.requiresModelDownload {
+            let state = downloader.state(for: currentEngine)
+            if state != .downloaded {
+                // WhisperKit models download on first load, that's ok
+                if !currentEngine.isWhisperKit {
+                    errorMessage = "Model not downloaded yet"
+                    return
+                }
             }
         }
 
-        isRecording = true
         errorMessage = nil
+        isRecording = true
 
         Task {
             do {
                 let service = try await getOrCreateASR()
                 try await service.startRecording(language: sourceLanguage)
+                print("[VM] Recording started with \(currentEngine.displayName)")
             } catch {
                 isRecording = false
-                errorMessage = error.localizedDescription
+                errorMessage = "[\(currentEngine.displayName)] \(error.localizedDescription)"
+                print("[VM] startListening failed: \(error)")
             }
         }
     }
@@ -100,9 +105,12 @@ final class ConversationViewModel {
             do {
                 guard let service = asrService else {
                     isProcessing = false
+                    errorMessage = "No ASR service loaded"
                     return
                 }
                 let transcript = try await service.stopRecording()
+                print("[VM] Transcript (\(loadedEngine?.displayName ?? "?")): \(transcript)")
+
                 guard !transcript.isEmpty else {
                     isProcessing = false
                     return
@@ -126,7 +134,6 @@ final class ConversationViewModel {
                 messages.append(message)
                 isProcessing = false
 
-                // Send to peer if connected
                 if let peer = peerSession, peer.connectionState == .connected {
                     try? peer.send(PeerMessage(from: message))
                 }
@@ -135,6 +142,7 @@ final class ConversationViewModel {
             } catch {
                 isProcessing = false
                 errorMessage = error.localizedDescription
+                print("[VM] stopAndTranslate failed: \(error)")
             }
         }
     }
@@ -161,8 +169,6 @@ final class ConversationViewModel {
             throw NSError(domain: "VoiceTranslate", code: 1, userInfo: [NSLocalizedDescriptionKey: "Translation not ready"])
         }
 
-        // If languages differ from current config, we need a matching session
-        // For now use the existing session (assumes watch sends matching languages)
         nonisolated(unsafe) let s = session
         let response = try await s.translate(transcript)
 
@@ -174,14 +180,11 @@ final class ConversationViewModel {
         )
         messages.append(message)
 
-        // Send to peer if connected
         if let peer = peerSession, peer.connectionState == .connected {
             try? peer.send(PeerMessage(from: message))
         }
 
-        // TTS on phone speaker
         await tts.speak(text: response.targetText, language: tgt)
-
         return message
     }
 
@@ -211,19 +214,28 @@ final class ConversationViewModel {
     }
 
     private func getOrCreateASR() async throws -> any ASRService {
-        // Apple Speech: always create fresh
+        // Apple Speech: always create fresh (audio engine state invalidates between sessions)
         if currentEngine == .appleSpeech {
+            print("[VM] Creating fresh AppleSpeechASR")
             let service = AppleSpeechASR()
             asrService = service
             loadedEngine = .appleSpeech
             return service
         }
 
-        // Reuse existing service if available
-        if let existing = asrService { return existing }
+        // Reuse existing service if already loaded for this engine
+        if let existing = asrService, loadedEngine == currentEngine {
+            print("[VM] Reusing existing \(currentEngine.displayName)")
+            return existing
+        }
 
+        // Need to load a new model
+        asrService = nil
+        loadedEngine = nil
         isLoadingModel = true
         defer { isLoadingModel = false }
+
+        print("[VM] Loading \(currentEngine.displayName)...")
 
         let service: any ASRService
         switch currentEngine {
@@ -238,8 +250,10 @@ final class ConversationViewModel {
             try await whisper.loadModel()
             service = whisper
         }
+
         asrService = service
         loadedEngine = currentEngine
+        print("[VM] ✓ Loaded \(currentEngine.displayName)")
         return service
     }
 }
