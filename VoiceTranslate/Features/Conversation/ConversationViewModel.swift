@@ -39,6 +39,7 @@ final class ConversationViewModel {
     }
 
     let downloader = ModelDownloader()
+    let phoneConnectivity = PhoneConnectivityService()
     var peerSession: PeerSessionManager?
 
     private var asrService: (any ASRService)?

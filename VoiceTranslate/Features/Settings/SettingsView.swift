@@ -23,9 +23,52 @@ struct SettingsView: View {
                     Text("\(monitor.availableMemoryMB) MB")
                         .foregroundStyle(monitor.isUnderPressure ? .red : .primary)
                 }
+                LabeledContent("ASR Engine") {
+                    Text(viewModel.loadedEngine?.displayName ?? "none")
+                        .foregroundStyle(viewModel.loadedEngine != nil ? .green : .secondary)
+                }
             }
+
+            watchDebugSection
         }
         .formStyle(.grouped)
         .navigationTitle("Settings")
+    }
+
+    private var watchDebugSection: some View {
+        Section("Apple Watch") {
+            let wc = viewModel.phoneConnectivity
+            LabeledContent("Session") {
+                Text(wc.activationState)
+            }
+            LabeledContent("Paired") {
+                Image(systemName: wc.isWatchPaired ? "checkmark.circle.fill" : "xmark.circle")
+                    .foregroundStyle(wc.isWatchPaired ? .green : .red)
+            }
+            LabeledContent("App Installed") {
+                Image(systemName: wc.isWatchAppInstalled ? "checkmark.circle.fill" : "xmark.circle")
+                    .foregroundStyle(wc.isWatchAppInstalled ? .green : .red)
+            }
+            LabeledContent("Reachable") {
+                Image(systemName: wc.isWatchReachable ? "checkmark.circle.fill" : "xmark.circle")
+                    .foregroundStyle(wc.isWatchReachable ? .green : .red)
+            }
+            LabeledContent("Last Event") {
+                Text(wc.lastEvent)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            LabeledContent("Audio Received") {
+                Text("\(wc.receivedAudioCount)x (\(wc.lastAudioSamples) samples)")
+                    .font(.caption)
+            }
+            if let error = wc.lastError {
+                LabeledContent("Error") {
+                    Text(error)
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                }
+            }
+        }
     }
 }
