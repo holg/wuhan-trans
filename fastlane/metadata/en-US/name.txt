@@ -1,1 +1,1 @@
-VoiceTranslate
+VoiceTranslator - offline

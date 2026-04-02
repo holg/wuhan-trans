@@ -1,1 +1,1 @@
-VoiceTranslate
+离线语音翻译器
