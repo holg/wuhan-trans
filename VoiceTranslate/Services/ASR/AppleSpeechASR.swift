@@ -8,12 +8,12 @@ final class AppleSpeechASR: ASRService, @unchecked Sendable {
     private var recognitionTask: SFSpeechRecognitionTask?
     private var audioEngine: AVAudioEngine?
     private var transcribedText = ""
+    private var finalResultContinuation: CheckedContinuation<String, Error>?
     private(set) var isRecording = false
 
     func startRecording(language: SupportedLanguage) async throws {
         guard !isRecording else { return }
-
-        cleanup()
+        stopAudioEngine()
 
         let status = SFSpeechRecognizer.authorizationStatus()
         if status == .notDetermined {
@@ -32,12 +32,10 @@ final class AppleSpeechASR: ASRService, @unchecked Sendable {
             throw ASRError.engineUnavailable
         }
 
-        // Set audio session BEFORE creating AVAudioEngine
         #if os(iOS)
         let session = AVAudioSession.sharedInstance()
         try session.setCategory(.playAndRecord, mode: .default, options: [.defaultToSpeaker, .allowBluetoothHFP])
-        try session.setActive(true, options: [])
-        // Let the audio system settle after session change
+        try session.setActive(true)
         try await Task.sleep(for: .milliseconds(100))
         #endif
 
@@ -47,15 +45,23 @@ final class AppleSpeechASR: ASRService, @unchecked Sendable {
         recognitionRequest = request
 
         transcribedText = ""
-        recognitionTask = recognizer.recognitionTask(with: request) { [weak self] result, _ in
+        recognitionTask = recognizer.recognitionTask(with: request) { [weak self] result, error in
+            guard let self else { return }
             if let result {
-                self?.transcribedText = result.bestTranscription.formattedString
+                self.transcribedText = result.bestTranscription.formattedString
+                if result.isFinal {
+                    self.finalResultContinuation?.resume(returning: result.bestTranscription.formattedString)
+                    self.finalResultContinuation = nil
+                }
+            }
+            if let error, self.finalResultContinuation != nil {
+                self.finalResultContinuation?.resume(throwing: error)
+                self.finalResultContinuation = nil
             }
         }
 
-        // Create engine AFTER audio session is configured
-        let engine = AVAudioEngine()
-        let inputNode = engine.inputNode
+        let audioEngine = AVAudioEngine()
+        let inputNode = audioEngine.inputNode
         let recordingFormat = inputNode.outputFormat(forBus: 0)
 
         guard recordingFormat.sampleRate > 0, recordingFormat.channelCount > 0 else {
@@ -70,33 +76,43 @@ final class AppleSpeechASR: ASRService, @unchecked Sendable {
             request.append(buffer)
         }
 
-        engine.prepare()
-        try engine.start()
-        self.audioEngine = engine
+        audioEngine.prepare()
+        try audioEngine.start()
+        self.audioEngine = audioEngine
         isRecording = true
     }
 
     func stopRecording() async throws -> String {
         guard isRecording else { return "" }
-        cleanup()
+        isRecording = false
 
-        // Let the recognition task finalize
-        try? await Task.sleep(for: .milliseconds(300))
-
-        return transcribedText
-    }
-
-    private func cleanup() {
-        if let audioEngine {
-            audioEngine.inputNode.removeTap(onBus: 0)
-            audioEngine.stop()
-            self.audioEngine = nil
-        }
+        // Stop audio capture but keep recognition alive
+        stopAudioEngine()
         recognitionRequest?.endAudio()
         recognitionRequest = nil
+
+        // Wait for the final recognition result (up to 10 seconds)
+        let result: String
+        if let task = recognitionTask, !task.isCancelled {
+            result = try await withCheckedThrowingContinuation { cont in
+                self.finalResultContinuation = cont
+
+                // Timeout after 10 seconds
+                Task {
+                    try? await Task.sleep(for: .seconds(10))
+                    if self.finalResultContinuation != nil {
+                        self.finalResultContinuation?.resume(returning: self.transcribedText)
+                        self.finalResultContinuation = nil
+                    }
+                }
+            }
+        } else {
+            result = transcribedText
+        }
+
         recognitionTask?.cancel()
         recognitionTask = nil
-        isRecording = false
+        return result
     }
 
     func transcribe(samples: [Float], language: SupportedLanguage) async throws -> String {
@@ -108,7 +124,6 @@ final class AppleSpeechASR: ASRService, @unchecked Sendable {
         let request = SFSpeechAudioBufferRecognitionRequest()
         request.requiresOnDeviceRecognition = true
 
-        // Create PCM buffer from float samples
         let format = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 16000, channels: 1, interleaved: false)!
         let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(samples.count))!
         buffer.frameLength = AVAudioFrameCount(samples.count)
@@ -126,6 +141,14 @@ final class AppleSpeechASR: ASRService, @unchecked Sendable {
                     cont.resume(throwing: error)
                 }
             }
+        }
+    }
+
+    private func stopAudioEngine() {
+        if let audioEngine {
+            audioEngine.inputNode.removeTap(onBus: 0)
+            audioEngine.stop()
+            self.audioEngine = nil
         }
     }
 }
