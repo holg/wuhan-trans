@@ -138,6 +138,14 @@ if $ARCHIVE; then
     mkdir -p "$ARCHIVE_DIR"
 
     echo ""
+    echo "=== Building watchOS first ==="
+    xcodebuild build \
+        -project VoiceTranslate.xcodeproj \
+        -scheme VoiceTranslateWatch \
+        -destination 'generic/platform=watchOS' \
+        -configuration Release \
+        -quiet || echo "Warning: watchOS build failed, continuing without watch app"
+
     echo "=== Building iOS archive ==="
     xcodebuild archive \
         -project VoiceTranslate.xcodeproj \
