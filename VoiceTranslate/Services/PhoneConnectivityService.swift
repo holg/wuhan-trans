@@ -59,7 +59,7 @@ extension PhoneConnectivityService: WCSessionDelegate {
         }
     }
 
-    nonisolated func session(_ session: WCSession, didReceiveMessageData messageData: Data, replyHandler: @escaping @Sendable (Data) -> Void) {
+    nonisolated func session(_ session: WCSession, didReceiveMessageData messageData: Data, replyHandler: @escaping (Data) -> Void) {
         guard let msg = try? WatchMessage.decode(from: messageData),
               msg.type == .audioData,
               let audioPayload = try? JSONDecoder().decode(AudioPayload.self, from: msg.payload) else {
