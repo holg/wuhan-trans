@@ -58,6 +58,10 @@ struct WatchConversationView: View {
                 Text("Translating...")
                     .font(.caption2)
                     .foregroundStyle(.orange)
+            } else if let error = connectivity.errorMessage {
+                Text(error)
+                    .font(.caption2)
+                    .foregroundStyle(.orange)
             } else if let error = errorMessage {
                 Text(error)
                     .font(.caption2)

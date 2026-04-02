@@ -11,6 +11,7 @@ final class WatchConnectivityClient: NSObject {
     var sourceLanguage: SupportedLanguage = .chinese
     var targetLanguage: SupportedLanguage = .english
     var isSending = false
+    var errorMessage: String?
 
     private var session: WCSession?
 
@@ -24,32 +25,33 @@ final class WatchConnectivityClient: NSObject {
     }
 
     func sendAudio(_ samples: [Float], source: SupportedLanguage, target: SupportedLanguage) {
-        guard let session, session.isReachable else { return }
+        guard let session, session.isReachable else {
+            errorMessage = "iPhone not reachable"
+            return
+        }
         isSending = true
+        errorMessage = nil
 
-        let payload = AudioPayload(samples: samples, sourceLanguage: source, targetLanguage: target)
-        guard let payloadData = try? JSONEncoder().encode(payload),
-              let messageData = try? WatchMessage(type: .audioData, payload: payloadData).encode() else {
+        // Send as dictionary message (more efficient than JSON-encoded Data)
+        let audioData = samples.withUnsafeBytes { Data($0) }
+        let metadata: [String: Any] = [
+            "type": "audio",
+            "source": source.rawValue,
+            "target": target.rawValue,
+            "sampleCount": samples.count
+        ]
+
+        // Use transferFile for large audio data
+        let tempURL = FileManager.default.temporaryDirectory.appending(path: "watch_audio.pcm")
+        do {
+            try audioData.write(to: tempURL)
+        } catch {
             isSending = false
+            errorMessage = "Failed to prepare audio"
             return
         }
 
-        session.sendMessageData(messageData, replyHandler: { [weak self] replyData in
-            guard let reply = try? WatchMessage.decode(from: replyData),
-                  reply.type == .translationResult,
-                  let result = try? JSONDecoder().decode(TranslationResultPayload.self, from: reply.payload) else {
-                Task { @MainActor in self?.isSending = false }
-                return
-            }
-            Task { @MainActor in
-                self?.receivedMessages.append(result.message)
-                self?.isSending = false
-                WKInterfaceDevice.current().play(.notification)
-            }
-        }, errorHandler: { [weak self] error in
-            print("[Watch] Send failed: \(error.localizedDescription)")
-            Task { @MainActor in self?.isSending = false }
-        })
+        session.transferFile(tempURL, metadata: metadata)
     }
 }
 
@@ -68,6 +70,7 @@ extension WatchConnectivityClient: WCSessionDelegate {
         }
     }
 
+    // Receive translation results from phone
     nonisolated func session(_ session: WCSession, didReceiveMessageData messageData: Data) {
         guard let msg = try? WatchMessage.decode(from: messageData) else { return }
 
@@ -76,6 +79,7 @@ extension WatchConnectivityClient: WCSessionDelegate {
             guard let result = try? JSONDecoder().decode(TranslationResultPayload.self, from: msg.payload) else { return }
             Task { @MainActor in
                 self.receivedMessages.append(result.message)
+                self.isSending = false
                 WKInterfaceDevice.current().play(.notification)
             }
         case .languageSync:
@@ -85,7 +89,19 @@ extension WatchConnectivityClient: WCSessionDelegate {
                 self.targetLanguage = sync.targetLanguage
             }
         case .audioData:
-            break // Watch doesn't receive audio
+            break
         }
+    }
+
+    // Receive confirmation that file was delivered
+    nonisolated func session(_ session: WCSession, didFinish fileTransfer: WCSessionFileTransfer, error: Error?) {
+        if let error {
+            Task { @MainActor in
+                self.isSending = false
+                self.errorMessage = "Send failed: \(error.localizedDescription)"
+            }
+        }
+        // Clean up temp file
+        try? FileManager.default.removeItem(at: fileTransfer.file.fileURL)
     }
 }

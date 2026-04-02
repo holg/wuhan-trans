@@ -28,11 +28,12 @@ final class PhoneConnectivityService: NSObject {
         session.sendMessageData(msgData, replyHandler: nil, errorHandler: nil)
     }
 
-    private func sendTranslationResult(_ message: ConversationMessage, via replyHandler: @escaping (Data) -> Void) {
+    private func sendTranslationToWatch(_ message: ConversationMessage) {
+        guard let session, session.isReachable else { return }
         let payload = TranslationResultPayload(message: message)
         guard let payloadData = try? JSONEncoder().encode(payload),
               let msgData = try? WatchMessage(type: .translationResult, payload: payloadData).encode() else { return }
-        replyHandler(msgData)
+        session.sendMessageData(msgData, replyHandler: nil, errorHandler: nil)
     }
 }
 
@@ -59,17 +60,22 @@ extension PhoneConnectivityService: WCSessionDelegate {
         }
     }
 
-    nonisolated func session(_ session: WCSession, didReceiveMessageData messageData: Data, replyHandler: @escaping (Data) -> Void) {
-        guard let msg = try? WatchMessage.decode(from: messageData),
-              msg.type == .audioData,
-              let audioPayload = try? JSONDecoder().decode(AudioPayload.self, from: msg.payload) else {
+    // Receive audio file from watch
+    nonisolated func session(_ session: WCSession, didReceive file: WCSessionFile) {
+        guard let metadata = file.metadata,
+              let type = metadata["type"] as? String, type == "audio",
+              let sourceRaw = metadata["source"] as? String,
+              let targetRaw = metadata["target"] as? String,
+              let source = SupportedLanguage(rawValue: sourceRaw),
+              let target = SupportedLanguage(rawValue: targetRaw) else {
             return
         }
 
-        let samples = audioPayload.floatSamples()
-        let source = audioPayload.sourceLanguage
-        let target = audioPayload.targetLanguage
-        nonisolated(unsafe) let reply = replyHandler
+        // Read audio data from file
+        guard let audioData = try? Data(contentsOf: file.fileURL) else { return }
+        let samples = audioData.withUnsafeBytes { Array($0.bindMemory(to: Float.self)) }
+
+        print("[Phone] Received \(samples.count) samples from watch")
 
         Task { @MainActor in
             guard let vm = self.viewModel else { return }
@@ -79,7 +85,7 @@ extension PhoneConnectivityService: WCSessionDelegate {
                     sourceLanguage: source,
                     targetLanguage: target
                 )
-                self.sendTranslationResult(message, via: reply)
+                self.sendTranslationToWatch(message)
             } catch {
                 print("[Phone] Watch audio processing failed: \(error.localizedDescription)")
             }
@@ -88,7 +94,6 @@ extension PhoneConnectivityService: WCSessionDelegate {
 }
 
 #else
-// macOS stub — no WatchConnectivity
 import Foundation
 import Observation
 

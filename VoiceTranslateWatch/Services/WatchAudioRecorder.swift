@@ -24,13 +24,21 @@ final class WatchAudioRecorder {
             throw WatchRecorderError.audioFormatInvalid
         }
 
+        // Watch mic is typically 16kHz or 44.1kHz mono
+        // Record in native format, we'll send raw and let the phone handle resampling if needed
+        let sampleRate = nativeFormat.sampleRate
+        let maxSeconds = 30.0
+        let maxSamples = Int(sampleRate * maxSeconds)
+
         inputNode.installTap(onBus: 0, bufferSize: 4096, format: nativeFormat) { [weak self] buffer, _ in
-            guard let self else { return }
-            let channelData = buffer.floatChannelData![0]
+            guard let channelData = buffer.floatChannelData?[0] else { return }
             let frameCount = Int(buffer.frameLength)
             let samples = Array(UnsafeBufferPointer(start: channelData, count: frameCount))
             Task { @MainActor in
-                self.audioBuffer.append(contentsOf: samples)
+                guard let self, self.isRecording else { return }
+                if self.audioBuffer.count < maxSamples {
+                    self.audioBuffer.append(contentsOf: samples)
+                }
             }
         }
 
@@ -41,12 +49,15 @@ final class WatchAudioRecorder {
     }
 
     func stopCapture() -> [Float] {
+        guard isRecording else { return [] }
         audioEngine?.inputNode.removeTap(onBus: 0)
         audioEngine?.stop()
         audioEngine = nil
         isRecording = false
-        try? AVAudioSession.sharedInstance().setActive(false)
-        return audioBuffer
+        try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+        let result = audioBuffer
+        audioBuffer = []
+        return result
     }
 }
 
