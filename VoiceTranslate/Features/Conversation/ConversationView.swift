@@ -58,8 +58,10 @@ struct ConversationView: View {
             ScrollView {
                 LazyVStack(spacing: 10) {
                     ForEach(viewModel.messages) { message in
-                        MessageBubble(message: message)
-                            .id(message.id)
+                        MessageBubble(message: message) {
+                            viewModel.replayTranslation(message)
+                        }
+                        .id(message.id)
                     }
                 }
                 .padding(.horizontal, 12)

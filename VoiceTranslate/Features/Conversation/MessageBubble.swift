@@ -2,6 +2,7 @@ import SwiftUI
 
 struct MessageBubble: View {
     let message: ConversationMessage
+    var onReplay: (() -> Void)?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
@@ -15,6 +16,14 @@ struct MessageBubble: View {
                     .foregroundStyle(.secondary)
                 Text(message.targetLanguage.flag)
                 Spacer()
+                Button {
+                    onReplay?()
+                } label: {
+                    Image(systemName: "speaker.wave.2.fill")
+                        .font(.caption)
+                        .foregroundStyle(.blue)
+                }
+                .buttonStyle(.plain)
                 Text(message.timestamp, style: .time)
                     .font(.caption2)
                     .foregroundStyle(.tertiary)

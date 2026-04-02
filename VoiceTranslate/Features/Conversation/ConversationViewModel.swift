@@ -66,6 +66,12 @@ final class ConversationViewModel {
         errorMessage = nil
     }
 
+    func replayTranslation(_ message: ConversationMessage) {
+        Task {
+            await tts.speak(text: message.translatedText, language: message.targetLanguage)
+        }
+    }
+
     func startListening() {
         guard !isRecording, !isProcessing, !isLoadingModel else { return }
 
