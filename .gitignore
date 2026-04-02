@@ -34,5 +34,8 @@ belle-coreml/
 # Xcode generated plist (xcodegen creates this)
 VoiceTranslate/Info.plist
 
+# App Store screenshots (large PNGs)
+appstore/screenshots/
+
 # OS
 .DS_Store

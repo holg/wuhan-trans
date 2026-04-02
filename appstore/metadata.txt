@@ -1,0 +1,54 @@
+=== App Store Metadata ===
+
+App Name: VoiceTranslate
+Subtitle: On-device Voice Translator
+
+Category: Utilities
+Secondary Category: Productivity
+
+Price: Free
+
+Privacy URL: https://github.com/holg/wuhan-trans/blob/main/PRIVACY.md
+Support URL: https://github.com/holg/wuhan-trans
+
+Keywords: translator, voice, chinese, german, english, offline, whisper, speech, translation, walkie-talkie
+
+=== Description (4000 chars max) ===
+
+VoiceTranslate is a fully on-device voice translator for Chinese, English, German and 23+ more languages. No internet required — perfect for travel, family conversations, and business meetings.
+
+WALKIE-TALKIE TRANSLATION
+Press and hold to speak, release to translate. Your speech is transcribed, translated, and spoken aloud in the target language — all in seconds, all on your device.
+
+MULTIPLE ASR ENGINES
+• Apple Speech — zero download, works immediately
+• Whisper Medium / Large v3 — OpenAI's multilingual models via WhisperKit
+• Belle Whisper Large v3 — Chinese-optimized for best Mandarin accuracy
+• Cohere Transcribe — 14 languages, 6-bit optimized CoreML
+
+PAIRED DEVICE MODE
+Connect two phones via Bluetooth/WiFi Direct (no internet needed). Speak on one phone, hear the translation on the other. Perfect for bilingual conversations across a dinner table.
+
+APPLE WATCH COMPANION
+Record on your watch, hear the translation on your phone. Keep your phone in your pocket — your watch is the remote control.
+
+FULLY OFFLINE
+Everything runs on-device. No cloud services, no API keys, no data leaves your phone. Works in China, on airplanes, anywhere without connectivity.
+
+FEATURES
+• 26 languages with configurable quick-select
+• Apple Translation framework for accurate translations
+• Text-to-speech in all supported languages
+• Copy/paste any transcript or translation
+• Conversation history with search
+• Action Button shortcut support (iPhone 15 Pro)
+• iOS, macOS, and watchOS
+
+=== What's New (Release Notes) ===
+
+Initial release. On-device voice translation with walkie-talkie UX, paired device mode, and Apple Watch companion.
+
+=== Promotional Text (170 chars max) ===
+
+Speak in one language, hear it in another — completely offline. Walkie-talkie style voice translation for Chinese, English, German and 23+ more languages.
+
