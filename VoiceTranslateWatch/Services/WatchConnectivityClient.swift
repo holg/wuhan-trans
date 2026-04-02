@@ -78,11 +78,22 @@ extension WatchConnectivityClient: WCSessionDelegate {
 
     // Receive translation results from phone
     nonisolated func session(_ session: WCSession, didReceiveMessageData messageData: Data) {
-        guard let msg = try? WatchMessage.decode(from: messageData) else { return }
+        WatchCrashLog.log("didReceiveMessageData: \(messageData.count) bytes")
+
+        guard let msg = try? WatchMessage.decode(from: messageData) else {
+            WatchCrashLog.log("didReceiveMessageData: decode failed")
+            Task { @MainActor in self.isSending = false }
+            return
+        }
 
         switch msg.type {
         case .translationResult:
-            guard let result = try? JSONDecoder().decode(TranslationResultPayload.self, from: msg.payload) else { return }
+            guard let result = try? JSONDecoder().decode(TranslationResultPayload.self, from: msg.payload) else {
+                WatchCrashLog.log("didReceiveMessageData: payload decode failed")
+                Task { @MainActor in self.isSending = false }
+                return
+            }
+            WatchCrashLog.log("didReceiveMessageData: got translation")
             Task { @MainActor in
                 self.receivedMessages.append(result.message)
                 self.isSending = false
@@ -99,15 +110,29 @@ extension WatchConnectivityClient: WCSessionDelegate {
         }
     }
 
+    // Receive dictionary message (e.g. crash log ack)
+    nonisolated func session(_ session: WCSession, didReceiveMessage message: [String: Any]) {
+        WatchCrashLog.log("didReceiveMessage: \(message.keys)")
+    }
+
     // Receive confirmation that file was delivered
     nonisolated func session(_ session: WCSession, didFinish fileTransfer: WCSessionFileTransfer, error: Error?) {
+        WatchCrashLog.log("fileTransfer finished, error=\(error?.localizedDescription ?? "none")")
         if let error {
             Task { @MainActor in
                 self.isSending = false
                 self.errorMessage = "Send failed: \(error.localizedDescription)"
             }
         }
-        // Clean up temp file
+        // Start a timeout — if no translation comes back in 30s, reset
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(30))
+            if self.isSending {
+                WatchCrashLog.log("Translation timeout, resetting isSending")
+                self.isSending = false
+                self.errorMessage = "Translation timed out"
+            }
+        }
         try? FileManager.default.removeItem(at: fileTransfer.file.fileURL)
     }
 }
