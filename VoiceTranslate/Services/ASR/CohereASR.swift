@@ -93,6 +93,11 @@ final class CohereASR: ASRService, @unchecked Sendable {
         return try await transcribe(audioBuffer)
     }
 
+    func transcribe(samples: [Float], language: SupportedLanguage) async throws -> String {
+        self.language = language
+        return try await transcribe(samples)
+    }
+
     // MARK: - Inference
 
     private func transcribe(_ audio: [Float]) async throws -> String {

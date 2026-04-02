@@ -144,6 +144,47 @@ final class ConversationViewModel {
         isProcessing = false
     }
 
+    // MARK: - Watch Audio
+
+    func processWatchAudio(
+        samples: [Float],
+        sourceLanguage src: SupportedLanguage,
+        targetLanguage tgt: SupportedLanguage
+    ) async throws -> ConversationMessage {
+        let service = try await getOrCreateASR()
+        let transcript = try await service.transcribe(samples: samples, language: src)
+        guard !transcript.isEmpty else {
+            throw NSError(domain: "VoiceTranslate", code: 0, userInfo: [NSLocalizedDescriptionKey: "No speech detected"])
+        }
+
+        guard let session = translationSession else {
+            throw NSError(domain: "VoiceTranslate", code: 1, userInfo: [NSLocalizedDescriptionKey: "Translation not ready"])
+        }
+
+        // If languages differ from current config, we need a matching session
+        // For now use the existing session (assumes watch sends matching languages)
+        nonisolated(unsafe) let s = session
+        let response = try await s.translate(transcript)
+
+        let message = ConversationMessage(
+            originalText: transcript,
+            translatedText: response.targetText,
+            sourceLanguage: src,
+            targetLanguage: tgt
+        )
+        messages.append(message)
+
+        // Send to peer if connected
+        if let peer = peerSession, peer.connectionState == .connected {
+            try? peer.send(PeerMessage(from: message))
+        }
+
+        // TTS on phone speaker
+        await tts.speak(text: response.targetText, language: tgt)
+
+        return message
+    }
+
     // MARK: - Peer
 
     func configurePeerSession(_ session: PeerSessionManager) {

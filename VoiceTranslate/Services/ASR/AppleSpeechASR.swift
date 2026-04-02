@@ -98,6 +98,36 @@ final class AppleSpeechASR: ASRService, @unchecked Sendable {
         recognitionTask = nil
         isRecording = false
     }
+
+    func transcribe(samples: [Float], language: SupportedLanguage) async throws -> String {
+        let locale = Locale(identifier: language.localeIdentifier)
+        guard let recognizer = SFSpeechRecognizer(locale: locale), recognizer.isAvailable else {
+            throw ASRError.engineUnavailable
+        }
+
+        let request = SFSpeechAudioBufferRecognitionRequest()
+        request.requiresOnDeviceRecognition = true
+
+        // Create PCM buffer from float samples
+        let format = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 16000, channels: 1, interleaved: false)!
+        let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(samples.count))!
+        buffer.frameLength = AVAudioFrameCount(samples.count)
+        let channelData = buffer.floatChannelData![0]
+        for i in 0..<samples.count { channelData[i] = samples[i] }
+
+        request.append(buffer)
+        request.endAudio()
+
+        return try await withCheckedThrowingContinuation { cont in
+            recognizer.recognitionTask(with: request) { result, error in
+                if let result, result.isFinal {
+                    cont.resume(returning: result.bestTranscription.formattedString)
+                } else if let error {
+                    cont.resume(throwing: error)
+                }
+            }
+        }
+    }
 }
 
 enum ASRError: Error, LocalizedError {

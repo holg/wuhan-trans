@@ -4,6 +4,7 @@ options:
   deploymentTarget:
     iOS: "26.0"
     macOS: "26.0"
+    watchOS: "26.0"
   xcodeVersion: "16.0"
   generateEmptyDirectories: true
 
@@ -22,9 +23,13 @@ targets:
           - Resources
       - path: VoiceTranslate/Resources
         buildPhase: resources
+      - path: Shared
     dependencies:
       - package: WhisperKit
         product: WhisperKit
+      - target: VoiceTranslateWatch
+        embed: true
+        platforms: [iOS]
     info:
       path: VoiceTranslate/Info.plist
       properties:
@@ -37,14 +42,13 @@ targets:
         SWIFT_VERSION: "6.0"
         GENERATE_INFOPLIST_FILE: YES
         MARKETING_VERSION: "1.0.0"
-        CURRENT_PROJECT_VERSION: 5
+        CURRENT_PROJECT_VERSION: 6
         PRODUCT_BUNDLE_IDENTIFIER: eu.trahe.voicetranslator.app
         INFOPLIST_KEY_NSMicrophoneUsageDescription: "VoiceTranslate needs microphone access to record speech for translation."
         INFOPLIST_KEY_NSSpeechRecognitionUsageDescription: "VoiceTranslate uses speech recognition to transcribe your voice."
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
         INFOPLIST_KEY_UISupportedInterfaceOrientations: "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
         INFOPLIST_KEY_NSLocalNetworkUsageDescription: "VoiceTranslate uses the local network to connect with a nearby device for paired translation."
-        # NSBonjourServices is set via info.properties below (arrays don't work as INFOPLIST_KEY)
         ARCHS: arm64
         ONLY_ACTIVE_ARCH: NO
         DEVELOPMENT_TEAM: U4GT5CZ7J7
@@ -52,3 +56,33 @@ targets:
         INFOPLIST_KEY_LSApplicationCategoryType: "public.app-category.utilities"
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         SWIFT_STRICT_CONCURRENCY: complete
+
+  VoiceTranslateWatch:
+    type: application
+    platform: watchOS
+    sources:
+      - path: VoiceTranslateWatch
+        excludes:
+          - Resources
+      - path: VoiceTranslateWatch/Resources
+        buildPhase: resources
+      - path: Shared
+    info:
+      path: VoiceTranslateWatch/Info.plist
+      properties:
+        WKApplication: true
+        NSMicrophoneUsageDescription: "VoiceTranslate needs microphone access to record speech for translation."
+    entitlements:
+      path: VoiceTranslateWatch/VoiceTranslateWatch.entitlements
+    settings:
+      base:
+        SWIFT_VERSION: "6.0"
+        GENERATE_INFOPLIST_FILE: YES
+        MARKETING_VERSION: "1.0.0"
+        CURRENT_PROJECT_VERSION: 6
+        PRODUCT_BUNDLE_IDENTIFIER: eu.trahe.voicetranslator.app.watchkitapp
+        DEVELOPMENT_TEAM: U4GT5CZ7J7
+        CODE_SIGN_STYLE: Automatic
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        SWIFT_STRICT_CONCURRENCY: complete
+        INFOPLIST_KEY_WKCompanionAppBundleIdentifier: eu.trahe.voicetranslator.app

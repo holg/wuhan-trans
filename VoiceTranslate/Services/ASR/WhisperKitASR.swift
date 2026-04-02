@@ -84,6 +84,15 @@ final class WhisperKitASR: ASRService, @unchecked Sendable {
         )
         return result.map(\.text).joined(separator: " ").trimmingCharacters(in: .whitespaces)
     }
+
+    func transcribe(samples: [Float], language: SupportedLanguage) async throws -> String {
+        guard let whisperKit else { throw WhisperKitASRError.modelNotLoaded }
+        let result = try await whisperKit.transcribe(
+            audioArray: samples,
+            decodeOptions: DecodingOptions(language: language.whisperCode)
+        )
+        return result.map(\.text).joined(separator: " ").trimmingCharacters(in: .whitespaces)
+    }
 }
 
 enum WhisperKitASRError: Error, LocalizedError {
