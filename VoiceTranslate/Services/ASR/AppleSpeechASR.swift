@@ -35,7 +35,7 @@ final class AppleSpeechASR: ASRService, @unchecked Sendable {
         // Set audio session BEFORE creating AVAudioEngine
         #if os(iOS)
         let session = AVAudioSession.sharedInstance()
-        try session.setCategory(.playAndRecord, mode: .default, options: [.defaultToSpeaker, .allowBluetooth])
+        try session.setCategory(.playAndRecord, mode: .default, options: [.defaultToSpeaker, .allowBluetoothHFP])
         try session.setActive(true, options: [])
         // Let the audio system settle after session change
         try await Task.sleep(for: .milliseconds(100))

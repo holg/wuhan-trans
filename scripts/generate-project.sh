@@ -125,10 +125,57 @@ if ios_target:
     new_phases = phases.rstrip() + f"\n\t\t\t\t{copy_phase_id} /* Embed Watch Content */,\n"
     content = content[:ios_target.start(2)] + new_phases + content[ios_target.end(2):]
 
+# Add PBXTargetDependency so iOS target builds watch target first
+watch_target = re.search(r'(\w+) /\* VoiceTranslateWatch \*/ = \{[^}]*?isa = PBXNativeTarget', content)
+if watch_target:
+    watch_target_id = watch_target.group(1)
+    dep_id = make_id("watch_target_dependency")
+    proxy_id = make_id("watch_container_proxy")
+
+    # Add container item proxy
+    proxy_section = f'''
+/* Begin PBXContainerItemProxy section */
+\t\t{proxy_id} /* PBXContainerItemProxy */ = {{
+\t\t\tisa = PBXContainerItemProxy;
+\t\t\tcontainerPortal = {re.search(r'(\w+) /\* Project object \*/', content).group(1)} /* Project object */;
+\t\t\tproxyType = 1;
+\t\t\tremoteGlobalIDString = {watch_target_id};
+\t\t\tremoteInfo = VoiceTranslateWatch;
+\t\t}};
+/* End PBXContainerItemProxy section */
+'''
+    insert_point = content.find("/* Begin PBXCopyFilesBuildPhase section */")
+    content = content[:insert_point] + proxy_section + "\n" + content[insert_point:]
+
+    # Add target dependency
+    dep_section = f'''
+/* Begin PBXTargetDependency section */
+\t\t{dep_id} /* PBXTargetDependency */ = {{
+\t\t\tisa = PBXTargetDependency;
+\t\t\ttarget = {watch_target_id} /* VoiceTranslateWatch */;
+\t\t\ttargetProxy = {proxy_id} /* PBXContainerItemProxy */;
+\t\t}};
+/* End PBXTargetDependency section */
+'''
+    insert_point = content.find("/* Begin XCBuildConfiguration section */")
+    if insert_point == -1:
+        insert_point = content.find("/* Begin XCConfigurationList section */")
+    content = content[:insert_point] + dep_section + "\n" + content[insert_point:]
+
+    # Add dependency to iOS target's dependencies array
+    ios_deps = re.search(
+        r'(/\* VoiceTranslate \*/ = \{[^}]*?isa = PBXNativeTarget;[^}]*?dependencies = \(\s*\n)(.*?)(\s*\);)',
+        content, re.DOTALL
+    )
+    if ios_deps:
+        deps = ios_deps.group(2)
+        new_deps = deps.rstrip() + f"\n\t\t\t\t{dep_id} /* PBXTargetDependency */,\n"
+        content = content[:ios_deps.start(2)] + new_deps + content[ios_deps.end(2):]
+
 with open("VoiceTranslate.xcodeproj/project.pbxproj", "w") as f:
     f.write(content)
 
-print("Patched: Added Embed Watch Content build phase")
+print("Patched: Added Embed Watch Content build phase + target dependency")
 PYEOF
 
 echo "Project generated."
@@ -138,15 +185,7 @@ if $ARCHIVE; then
     mkdir -p "$ARCHIVE_DIR"
 
     echo ""
-    echo "=== Building watchOS first ==="
-    xcodebuild build \
-        -project VoiceTranslate.xcodeproj \
-        -scheme VoiceTranslateWatch \
-        -destination 'generic/platform=watchOS' \
-        -configuration Release \
-        -quiet || echo "Warning: watchOS build failed, continuing without watch app"
-
-    echo "=== Building iOS archive ==="
+    echo "=== Building iOS archive (includes watchOS) ==="
     xcodebuild archive \
         -project VoiceTranslate.xcodeproj \
         -scheme VoiceTranslate \
