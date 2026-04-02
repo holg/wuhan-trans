@@ -18,12 +18,20 @@ final class ConversationViewModel {
 
     var sourceLanguage: SupportedLanguage = .chinese {
         didSet {
-            if oldValue != sourceLanguage { invalidateTranslation() }
+            if oldValue != sourceLanguage {
+                invalidateTranslation()
+                saveSettings()
+                syncLanguagesToWatch()
+            }
         }
     }
     var targetLanguage: SupportedLanguage = .english {
         didSet {
-            if oldValue != targetLanguage { invalidateTranslation() }
+            if oldValue != targetLanguage {
+                invalidateTranslation()
+                saveSettings()
+                syncLanguagesToWatch()
+            }
         }
     }
 
@@ -35,6 +43,7 @@ final class ConversationViewModel {
             if !activeLanguages.contains(targetLanguage) {
                 targetLanguage = activeLanguages.last ?? .english
             }
+            saveSettings()
         }
     }
 
@@ -64,6 +73,7 @@ final class ConversationViewModel {
         asrService = nil
         loadedEngine = nil
         errorMessage = nil
+        saveSettings()
     }
 
     func replayTranslation(_ message: ConversationMessage) {
@@ -210,6 +220,43 @@ final class ConversationViewModel {
         Task {
             await tts.speak(text: peerMessage.translatedText, language: peerMessage.targetLanguage)
         }
+    }
+
+    // MARK: - Persistence
+
+    func loadSettings() {
+        let defaults = UserDefaults.standard
+        if let src = defaults.string(forKey: "sourceLanguage"),
+           let lang = SupportedLanguage(rawValue: src) {
+            sourceLanguage = lang
+        }
+        if let tgt = defaults.string(forKey: "targetLanguage"),
+           let lang = SupportedLanguage(rawValue: tgt) {
+            targetLanguage = lang
+        }
+        if let data = defaults.data(forKey: "activeLanguages"),
+           let langs = try? JSONDecoder().decode([SupportedLanguage].self, from: data),
+           langs.count == 3 {
+            activeLanguages = langs
+        }
+        if let eng = defaults.string(forKey: "currentEngine"),
+           let engine = ASREngine(rawValue: eng) {
+            currentEngine = engine
+        }
+    }
+
+    private func saveSettings() {
+        let defaults = UserDefaults.standard
+        defaults.set(sourceLanguage.rawValue, forKey: "sourceLanguage")
+        defaults.set(targetLanguage.rawValue, forKey: "targetLanguage")
+        if let data = try? JSONEncoder().encode(activeLanguages) {
+            defaults.set(data, forKey: "activeLanguages")
+        }
+        defaults.set(currentEngine.rawValue, forKey: "currentEngine")
+    }
+
+    private func syncLanguagesToWatch() {
+        phoneConnectivity.syncLanguages(source: sourceLanguage, target: targetLanguage)
     }
 
     private func invalidateTranslation() {

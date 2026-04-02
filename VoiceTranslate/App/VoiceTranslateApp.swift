@@ -8,6 +8,7 @@ struct VoiceTranslateApp: App {
         WindowGroup {
             ContentView(viewModel: viewModel)
                 .onAppear {
+                    viewModel.loadSettings()
                     SharedState.viewModel = viewModel
                     viewModel.phoneConnectivity.viewModel = viewModel
                 }

@@ -209,5 +209,7 @@ final class PhoneConnectivityService: NSObject {
     var lastAudioSamples = 0
     var lastError: String?
     weak var viewModel: ConversationViewModel?
+
+    func syncLanguages(source: SupportedLanguage, target: SupportedLanguage) {}
 }
 #endif
