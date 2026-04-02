@@ -23,7 +23,9 @@ struct VoiceTranslateWatchApp: App {
                     WatchLogView()
                 }
                 .onAppear {
-                    WatchCrashLog.log("App launched")
+                    let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "?"
+                    let build = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "?"
+                    WatchCrashLog.log("App launched v\(version)(\(build))")
                 }
         }
     }
@@ -32,11 +34,22 @@ struct VoiceTranslateWatchApp: App {
 struct WatchLogView: View {
     @State private var logText = WatchCrashLog.read()
 
+    private var versionString: String {
+        let v = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "?"
+        let b = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "?"
+        return "v\(v) build \(b)"
+    }
+
     var body: some View {
         ScrollView {
-            Text(logText)
-                .font(.system(size: 10, design: .monospaced))
-                .padding(4)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(versionString)
+                    .font(.system(size: 11, weight: .bold, design: .monospaced))
+                    .foregroundStyle(.blue)
+                Text(logText)
+                    .font(.system(size: 10, design: .monospaced))
+            }
+            .padding(4)
         }
         .toolbar {
             ToolbarItem(placement: .confirmationAction) {
