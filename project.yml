@@ -28,7 +28,6 @@ targets:
       - package: WhisperKit
         product: WhisperKit
       - target: VoiceTranslateWatch
-        embed: true
         platforms: [iOS]
     info:
       path: VoiceTranslate/Info.plist
