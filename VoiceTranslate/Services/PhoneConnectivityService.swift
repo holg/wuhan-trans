@@ -38,8 +38,9 @@ final class PhoneConnectivityService: NSObject {
 
 extension PhoneConnectivityService: WCSessionDelegate {
     nonisolated func session(_ session: WCSession, activationDidCompleteWith activationState: WCSessionActivationState, error: Error?) {
+        let reachable = session.isReachable
         Task { @MainActor in
-            self.isWatchReachable = session.isReachable
+            self.isWatchReachable = reachable
         }
     }
 
@@ -49,15 +50,16 @@ extension PhoneConnectivityService: WCSessionDelegate {
     }
 
     nonisolated func sessionReachabilityDidChange(_ session: WCSession) {
+        let reachable = session.isReachable
         Task { @MainActor in
-            self.isWatchReachable = session.isReachable
-            if session.isReachable, let vm = self.viewModel {
+            self.isWatchReachable = reachable
+            if reachable, let vm = self.viewModel {
                 self.syncLanguages(source: vm.sourceLanguage, target: vm.targetLanguage)
             }
         }
     }
 
-    nonisolated func session(_ session: WCSession, didReceiveMessageData messageData: Data, replyHandler: @escaping (Data) -> Void) {
+    nonisolated func session(_ session: WCSession, didReceiveMessageData messageData: Data, replyHandler: @escaping @Sendable (Data) -> Void) {
         guard let msg = try? WatchMessage.decode(from: messageData),
               msg.type == .audioData,
               let audioPayload = try? JSONDecoder().decode(AudioPayload.self, from: msg.payload) else {
@@ -67,6 +69,7 @@ extension PhoneConnectivityService: WCSessionDelegate {
         let samples = audioPayload.floatSamples()
         let source = audioPayload.sourceLanguage
         let target = audioPayload.targetLanguage
+        nonisolated(unsafe) let reply = replyHandler
 
         Task { @MainActor in
             guard let vm = self.viewModel else { return }
@@ -76,7 +79,7 @@ extension PhoneConnectivityService: WCSessionDelegate {
                     sourceLanguage: source,
                     targetLanguage: target
                 )
-                self.sendTranslationResult(message, via: replyHandler)
+                self.sendTranslationResult(message, via: reply)
             } catch {
                 print("[Phone] Watch audio processing failed: \(error.localizedDescription)")
             }
