@@ -1,4 +1,5 @@
 #if os(iOS)
+import AVFoundation
 import Foundation
 import Observation
 import WatchConnectivity
@@ -118,24 +119,37 @@ extension PhoneConnectivityService: WCSessionDelegate {
 
     nonisolated func session(_ session: WCSession, didReceive file: WCSessionFile) {
         guard let metadata = file.metadata,
-              let type = metadata["type"] as? String, type == "audio",
+              let type = metadata["type"] as? String,
+              (type == "audio" || type == "audioFile"),
               let sourceRaw = metadata["source"] as? String,
               let targetRaw = metadata["target"] as? String,
               let source = SupportedLanguage(rawValue: sourceRaw),
               let target = SupportedLanguage(rawValue: targetRaw) else {
-            print("[PhoneWC] Received file with invalid metadata")
+            print("[PhoneWC] Received file with invalid metadata: \(file.metadata ?? [:])")
             Task { @MainActor in self.lastEvent = "Received file: invalid metadata" }
             return
         }
 
-        guard let audioData = try? Data(contentsOf: file.fileURL) else {
-            print("[PhoneWC] Failed to read audio file")
-            Task { @MainActor in self.lastEvent = "Received file: read failed" }
-            return
-        }
+        let format = metadata["format"] as? String ?? "pcm"
+        print("[PhoneWC] Received \(format) audio from watch")
 
-        let samples = audioData.withUnsafeBytes { Array($0.bindMemory(to: Float.self)) }
-        print("[PhoneWC] Received \(samples.count) samples (\(audioData.count / 1024) KB) from watch, \(source.rawValue)→\(target.rawValue)")
+        let samples: [Float]
+        if format == "m4a" {
+            guard let decoded = Self.decodeAudioFile(file.fileURL) else {
+                print("[PhoneWC] Failed to decode M4A")
+                Task { @MainActor in self.lastEvent = "Decode M4A failed" }
+                return
+            }
+            samples = decoded
+        } else {
+            guard let audioData = try? Data(contentsOf: file.fileURL) else {
+                print("[PhoneWC] Failed to read audio file")
+                Task { @MainActor in self.lastEvent = "Read file failed" }
+                return
+            }
+            samples = audioData.withUnsafeBytes { Array($0.bindMemory(to: Float.self)) }
+        }
+        print("[PhoneWC] Decoded \(samples.count) samples from watch")
 
         Task { @MainActor in
             self.receivedAudioCount += 1
@@ -161,6 +175,21 @@ extension PhoneConnectivityService: WCSessionDelegate {
                 print("[PhoneWC] Watch audio processing failed: \(error)")
             }
         }
+    }
+
+    /// Decode a compressed audio file (M4A/AAC) to Float32 PCM samples at 16kHz
+    nonisolated static func decodeAudioFile(_ url: URL) -> [Float]? {
+        guard let audioFile = try? AVAudioFile(forReading: url) else { return nil }
+        let format = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 16000, channels: 1, interleaved: false)!
+        guard let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(audioFile.length)) else { return nil }
+        do {
+            try audioFile.read(into: buffer)
+        } catch {
+            print("[PhoneWC] Audio decode error: \(error)")
+            return nil
+        }
+        let channelData = buffer.floatChannelData![0]
+        return Array(UnsafeBufferPointer(start: channelData, count: Int(buffer.frameLength)))
     }
 }
 

@@ -31,8 +31,8 @@ final class WatchConnectivityClient: NSObject {
         session.sendMessage(context, replyHandler: nil, errorHandler: nil)
     }
 
-    func sendAudio(_ samples: [Float], source: SupportedLanguage, target: SupportedLanguage) {
-        WatchCrashLog.log("sendAudio: \(samples.count) samples, \(source.rawValue)→\(target.rawValue)")
+    func sendAudioFile(_ fileURL: URL, source: SupportedLanguage, target: SupportedLanguage) {
+        WatchCrashLog.log("sendAudio: \(source.rawValue)→\(target.rawValue)")
 
         guard let session, session.isReachable else {
             errorMessage = "iPhone not reachable"
@@ -40,36 +40,21 @@ final class WatchConnectivityClient: NSObject {
             return
         }
 
-        let audioData = samples.withUnsafeBytes { Data($0) }
-        WatchCrashLog.log("sendAudio: data size = \(audioData.count / 1024) KB")
-
-        guard audioData.count < 4_000_000 else {
-            errorMessage = "Recording too long"
-            WatchCrashLog.log("sendAudio: too large, aborting")
-            return
-        }
+        let size = (try? FileManager.default.attributesOfItem(atPath: fileURL.path())[.size] as? Int) ?? 0
+        WatchCrashLog.log("sendAudio: file size = \(size / 1024) KB")
 
         isSending = true
         errorMessage = nil
 
         let metadata: [String: Any] = [
-            "type": "audio",
+            "type": "audioFile",
             "source": source.rawValue,
             "target": target.rawValue,
-            "sampleCount": samples.count
+            "format": "m4a"
         ]
 
-        let tempURL = FileManager.default.temporaryDirectory
-            .appending(path: "watch_audio_\(UUID().uuidString).pcm")
-        do {
-            try audioData.write(to: tempURL)
-            WatchCrashLog.log("sendAudio: transferring file...")
-            session.transferFile(tempURL, metadata: metadata)
-        } catch {
-            isSending = false
-            errorMessage = "Failed: \(error.localizedDescription)"
-            WatchCrashLog.log("sendAudio: FAILED: \(error)")
-        }
+        WatchCrashLog.log("sendAudio: transferring...")
+        session.transferFile(fileURL, metadata: metadata)
     }
 }
 

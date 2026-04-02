@@ -93,24 +93,24 @@ struct WatchConversationView: View {
     }
 
     private func toggleRecording() {
-        WatchCrashLog.log("toggleRecording: isRecording=\(isRecording)")
+        WatchCrashLog.log("toggle: isRecording=\(isRecording)")
         if isRecording {
             isRecording = false
-            let samples = recorder.stopCapture()
-            errorMessage = nil
-
-            if samples.isEmpty {
+            WatchCrashLog.log("toggle: stopping")
+            guard let fileURL = recorder.stopCapture() else {
                 errorMessage = "No audio captured"
-                WatchCrashLog.log("toggleRecording: no audio")
+                WatchCrashLog.log("toggle: no file")
                 return
             }
+            errorMessage = nil
 
-            WatchCrashLog.log("toggleRecording: sending \(samples.count) samples")
-            connectivity.sendAudio(
-                samples,
+            WatchCrashLog.log("toggle: sending file")
+            connectivity.sendAudioFile(
+                fileURL,
                 source: connectivity.sourceLanguage,
                 target: connectivity.targetLanguage
             )
+            WatchCrashLog.log("toggle: send initiated")
         } else {
             do {
                 errorMessage = nil
@@ -118,7 +118,7 @@ struct WatchConversationView: View {
                 isRecording = true
             } catch {
                 errorMessage = error.localizedDescription
-                WatchCrashLog.log("toggleRecording: FAILED: \(error)")
+                WatchCrashLog.log("toggle: FAILED: \(error)")
             }
         }
     }

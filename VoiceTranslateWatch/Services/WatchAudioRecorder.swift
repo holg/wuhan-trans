@@ -1,90 +1,64 @@
 import AVFoundation
 import Observation
 
+/// Records audio on watch to a compressed file, then provides the file URL for transfer.
 @Observable
 @MainActor
 final class WatchAudioRecorder {
     private(set) var isRecording = false
-    private var audioEngine: AVAudioEngine?
-    private var audioBuffer: [Float] = []
-    private let lock = NSLock()
+    private var audioRecorder: AVAudioRecorder?
+    private let recordingURL: URL
+
+    init() {
+        recordingURL = FileManager.default.temporaryDirectory.appending(path: "watch_recording.m4a")
+    }
 
     func startCapture() throws {
         guard !isRecording else { return }
         WatchCrashLog.log("startCapture: begin")
 
-        lock.lock()
-        audioBuffer = []
-        lock.unlock()
+        // Clean up old recording
+        try? FileManager.default.removeItem(at: recordingURL)
 
-        do {
-            let session = AVAudioSession.sharedInstance()
-            WatchCrashLog.log("startCapture: setCategory")
-            try session.setCategory(.record, mode: .default)
-            WatchCrashLog.log("startCapture: setActive")
-            try session.setActive(true)
-        } catch {
-            WatchCrashLog.log("startCapture: audio session failed: \(error)")
-            throw error
-        }
+        let session = AVAudioSession.sharedInstance()
+        try session.setCategory(.record, mode: .default)
+        try session.setActive(true)
+        WatchCrashLog.log("startCapture: audio session active")
 
-        let engine = AVAudioEngine()
-        let inputNode = engine.inputNode
-        let nativeFormat = inputNode.outputFormat(forBus: 0)
-        WatchCrashLog.log("startCapture: format=\(nativeFormat.sampleRate)Hz \(nativeFormat.channelCount)ch")
+        // Record as compressed AAC — much smaller than raw PCM
+        let settings: [String: Any] = [
+            AVFormatIDKey: Int(kAudioFormatMPEG4AAC),
+            AVSampleRateKey: 16000,
+            AVNumberOfChannelsKey: 1,
+            AVEncoderAudioQualityKey: AVAudioQuality.high.rawValue,
+        ]
 
-        guard nativeFormat.sampleRate > 0, nativeFormat.channelCount > 0 else {
-            WatchCrashLog.log("startCapture: INVALID FORMAT")
-            throw WatchRecorderError.audioFormatInvalid
-        }
-
-        let maxSamples = Int(nativeFormat.sampleRate * 30)
-
-        // Audio tap runs on a realtime thread — NO MainActor dispatch, NO Task, lock only
-        nonisolated(unsafe) let unsafeSelf = self
-        inputNode.installTap(onBus: 0, bufferSize: 4096, format: nativeFormat) { buffer, _ in
-            guard let channelData = buffer.floatChannelData?[0] else { return }
-            let frameCount = Int(buffer.frameLength)
-            guard frameCount > 0 else { return }
-            let samples = Array(UnsafeBufferPointer(start: channelData, count: frameCount))
-            unsafeSelf.lock.lock()
-            if unsafeSelf.audioBuffer.count < maxSamples {
-                unsafeSelf.audioBuffer.append(contentsOf: samples)
-            }
-            unsafeSelf.lock.unlock()
-        }
-
-        WatchCrashLog.log("startCapture: prepare + start engine")
-        do {
-            engine.prepare()
-            try engine.start()
-        } catch {
-            WatchCrashLog.log("startCapture: engine start failed: \(error)")
-            throw error
-        }
-
-        audioEngine = engine
+        let recorder = try AVAudioRecorder(url: recordingURL, settings: settings)
+        recorder.record(forDuration: 30) // max 30 seconds
+        audioRecorder = recorder
         isRecording = true
         WatchCrashLog.log("startCapture: recording started OK")
     }
 
-    func stopCapture() -> [Float] {
-        WatchCrashLog.log("stopCapture: begin, isRecording=\(isRecording)")
-        guard isRecording else { return [] }
+    /// Stop recording and return the URL of the compressed audio file
+    func stopCapture() -> URL? {
+        WatchCrashLog.log("stopCapture: begin")
+        guard isRecording, let recorder = audioRecorder else { return nil }
 
-        audioEngine?.inputNode.removeTap(onBus: 0)
-        audioEngine?.stop()
-        audioEngine = nil
+        recorder.stop()
+        audioRecorder = nil
         isRecording = false
 
-        lock.lock()
-        let result = audioBuffer
-        audioBuffer = []
-        lock.unlock()
-
         try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
-        WatchCrashLog.log("stopCapture: \(result.count) samples captured")
-        return result
+
+        guard FileManager.default.fileExists(atPath: recordingURL.path()) else {
+            WatchCrashLog.log("stopCapture: no file created")
+            return nil
+        }
+
+        let size = (try? FileManager.default.attributesOfItem(atPath: recordingURL.path())[.size] as? Int) ?? 0
+        WatchCrashLog.log("stopCapture: file size = \(size / 1024) KB")
+        return recordingURL
     }
 }
 
