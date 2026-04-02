@@ -1,0 +1,1 @@
+translator, voice, chinese, german, english, offline, whisper, speech, translation, walkie-talkie

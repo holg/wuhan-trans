@@ -1,0 +1,49 @@
+default_platform(:ios)
+
+platform :ios do
+  desc "Upload metadata and screenshots to App Store Connect"
+  lane :metadata do
+    deliver(
+      skip_binary_upload: true,
+      skip_screenshots: false,
+      force: true,
+      submit_for_review: false,
+      automatic_release: false,
+      run_precheck_before_submit: false
+    )
+  end
+
+  desc "Upload metadata only (no screenshots)"
+  lane :metadata_only do
+    deliver(
+      skip_binary_upload: true,
+      skip_screenshots: true,
+      force: true,
+      submit_for_review: false
+    )
+  end
+
+  desc "Take screenshots, upload metadata, and submit build to TestFlight"
+  lane :beta do
+    # Build and archive
+    build_app(
+      project: "VoiceTranslate.xcodeproj",
+      scheme: "VoiceTranslate",
+      destination: "generic/platform=iOS",
+      export_method: "app-store"
+    )
+    # Upload to TestFlight
+    upload_to_testflight(skip_waiting_for_build_processing: true)
+  end
+
+  desc "Submit to App Store review"
+  lane :release do
+    deliver(
+      skip_binary_upload: true,
+      skip_screenshots: false,
+      submit_for_review: true,
+      automatic_release: true,
+      force: true
+    )
+  end
+end

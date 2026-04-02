@@ -1,0 +1,1 @@
+Initial release. On-device voice translation with walkie-talkie UX, paired device mode, and Apple Watch companion.

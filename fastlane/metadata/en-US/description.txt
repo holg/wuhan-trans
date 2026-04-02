@@ -1,0 +1,19 @@
+VoiceTranslate is a fully on-device voice translator for Chinese, English, German and 23+ more languages. No internet required — perfect for travel, family conversations, and business meetings.
+
+WALKIE-TALKIE TRANSLATION
+Press and hold to speak, release to translate. Your speech is transcribed, translated, and spoken aloud in the target language — all in seconds, all on your device.
+
+MULTIPLE ASR ENGINES
+• Apple Speech — zero download, works immediately
+• Whisper Medium / Large v3 — OpenAI's multilingual models via WhisperKit
+• Belle Whisper Large v3 — Chinese-optimized for best Mandarin accuracy
+• Cohere Transcribe — 14 languages, 6-bit optimized CoreML
+
+PAIRED DEVICE MODE
+Connect two phones via Bluetooth/WiFi Direct (no internet needed). Speak on one phone, hear the translation on the other. Perfect for bilingual conversations across a dinner table.
+
+APPLE WATCH COMPANION
+Record on your watch, hear the translation on your phone. Keep your phone in your pocket — your watch is the remote control.
+
+FULLY OFFLINE
+Everything runs on-device. No cloud services, no API keys, no data leaves your phone. Works in China, on airplanes, anywhere without connectivity.

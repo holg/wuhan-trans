@@ -1,0 +1,19 @@
+VoiceTranslate ist ein vollständig auf dem Gerät laufender Sprachübersetzer für Chinesisch, Englisch, Deutsch und über 23 weitere Sprachen. Kein Internet erforderlich — perfekt für Reisen, Familiengespräche und Geschäftstreffen.
+
+WALKIE-TALKIE-ÜBERSETZUNG
+Halten Sie gedrückt zum Sprechen, loslassen zum Übersetzen. Ihre Sprache wird transkribiert, übersetzt und in der Zielsprache vorgelesen — alles in Sekunden, alles auf Ihrem Gerät.
+
+MEHRERE SPRACHERKENNUNGS-ENGINES
+• Apple Speech — kein Download, funktioniert sofort
+• Whisper Medium / Large v3 — OpenAIs mehrsprachige Modelle via WhisperKit
+• Belle Whisper Large v3 — optimiert für beste Mandarin-Genauigkeit
+• Cohere Transcribe — 14 Sprachen, 6-Bit optimiertes CoreML
+
+GERÄTE-KOPPLUNG
+Verbinden Sie zwei Telefone über Bluetooth/WiFi Direct (kein Internet nötig). Sprechen Sie auf einem Telefon, hören Sie die Übersetzung auf dem anderen.
+
+APPLE WATCH BEGLEITER
+Nehmen Sie auf Ihrer Watch auf, hören Sie die Übersetzung auf Ihrem iPhone.
+
+VOLLSTÄNDIG OFFLINE
+Alles läuft auf dem Gerät. Keine Cloud-Dienste, keine API-Schlüssel, keine Daten verlassen Ihr Telefon.
