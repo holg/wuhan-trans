@@ -94,10 +94,16 @@ struct WatchConversationView: View {
 
     private func toggleRecording() {
         if isRecording {
-            let samples = recorder.stopCapture()
             isRecording = false
+            let samples = recorder.stopCapture()
             errorMessage = nil
-            guard !samples.isEmpty else { return }
+
+            if samples.isEmpty {
+                errorMessage = "No audio captured"
+                return
+            }
+
+            print("[Watch] Captured \(samples.count) samples, sending...")
             connectivity.sendAudio(
                 samples,
                 source: connectivity.sourceLanguage,
@@ -108,8 +114,10 @@ struct WatchConversationView: View {
                 errorMessage = nil
                 try recorder.startCapture()
                 isRecording = true
+                print("[Watch] Recording started")
             } catch {
                 errorMessage = error.localizedDescription
+                print("[Watch] Record failed: \(error)")
             }
         }
     }

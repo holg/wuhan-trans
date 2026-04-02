@@ -29,11 +29,19 @@ final class WatchConnectivityClient: NSObject {
             errorMessage = "iPhone not reachable"
             return
         }
+
+        let audioData = samples.withUnsafeBytes { Data($0) }
+        print("[Watch] Audio data size: \(audioData.count / 1024) KB (\(samples.count) samples)")
+
+        // Limit to ~2 MB (about 15 seconds at 16kHz)
+        guard audioData.count < 4_000_000 else {
+            errorMessage = "Recording too long"
+            return
+        }
+
         isSending = true
         errorMessage = nil
 
-        // Send as dictionary message (more efficient than JSON-encoded Data)
-        let audioData = samples.withUnsafeBytes { Data($0) }
         let metadata: [String: Any] = [
             "type": "audio",
             "source": source.rawValue,
@@ -41,17 +49,17 @@ final class WatchConnectivityClient: NSObject {
             "sampleCount": samples.count
         ]
 
-        // Use transferFile for large audio data
-        let tempURL = FileManager.default.temporaryDirectory.appending(path: "watch_audio.pcm")
+        let tempURL = FileManager.default.temporaryDirectory
+            .appending(path: "watch_audio_\(UUID().uuidString).pcm")
         do {
             try audioData.write(to: tempURL)
+            print("[Watch] Wrote temp file, transferring...")
+            session.transferFile(tempURL, metadata: metadata)
         } catch {
             isSending = false
-            errorMessage = "Failed to prepare audio"
-            return
+            errorMessage = "Failed: \(error.localizedDescription)"
+            print("[Watch] Failed to write audio: \(error)")
         }
-
-        session.transferFile(tempURL, metadata: metadata)
     }
 }
 
