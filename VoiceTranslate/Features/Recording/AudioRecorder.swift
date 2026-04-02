@@ -7,10 +7,13 @@ final class AudioRecorder {
     private(set) var isRecording = false
     private var audioEngine: AVAudioEngine?
     private var audioBuffer: [Float] = []
+    private let lock = NSLock()
 
     func startCapture() throws {
         guard !isRecording else { return }
+        lock.lock()
         audioBuffer = []
+        lock.unlock()
 
         let engine = AVAudioEngine()
         let inputNode = engine.inputNode
@@ -21,13 +24,14 @@ final class AudioRecorder {
             interleaved: false
         )!
 
-        inputNode.installTap(onBus: 0, bufferSize: 4096, format: format) { [weak self] buffer, _ in
+        nonisolated(unsafe) let unsafeSelf = self
+        inputNode.installTap(onBus: 0, bufferSize: 4096, format: format) { buffer, _ in
             let channelData = buffer.floatChannelData![0]
             let frameCount = Int(buffer.frameLength)
             let samples = Array(UnsafeBufferPointer(start: channelData, count: frameCount))
-            Task { @MainActor in
-                self?.audioBuffer.append(contentsOf: samples)
-            }
+            unsafeSelf.lock.lock()
+            unsafeSelf.audioBuffer.append(contentsOf: samples)
+            unsafeSelf.lock.unlock()
         }
 
         engine.prepare()
@@ -41,6 +45,10 @@ final class AudioRecorder {
         audioEngine?.stop()
         audioEngine = nil
         isRecording = false
-        return audioBuffer
+        lock.lock()
+        let result = audioBuffer
+        audioBuffer = []
+        lock.unlock()
+        return result
     }
 }

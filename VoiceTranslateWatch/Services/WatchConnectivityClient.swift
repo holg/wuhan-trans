@@ -24,6 +24,13 @@ final class WatchConnectivityClient: NSObject {
         self.session = session
     }
 
+    func sendCrashLog() {
+        guard let session, session.isReachable else { return }
+        let log = WatchCrashLog.read()
+        let context: [String: Any] = ["type": "crashlog", "log": log]
+        session.sendMessage(context, replyHandler: nil, errorHandler: nil)
+    }
+
     func sendAudio(_ samples: [Float], source: SupportedLanguage, target: SupportedLanguage) {
         WatchCrashLog.log("sendAudio: \(samples.count) samples, \(source.rawValue)→\(target.rawValue)")
 
@@ -78,6 +85,9 @@ extension WatchConnectivityClient: WCSessionDelegate {
         let reachable = session.isReachable
         Task { @MainActor in
             self.isReachable = reachable
+            if reachable {
+                self.sendCrashLog()
+            }
         }
     }
 

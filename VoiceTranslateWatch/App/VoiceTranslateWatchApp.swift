@@ -8,18 +8,21 @@ struct VoiceTranslateWatchApp: App {
 
     var body: some Scene {
         WindowGroup {
-            WatchConversationView(connectivity: connectivity, recorder: recorder)
-                .toolbar {
-                    ToolbarItem(placement: .topBarLeading) {
-                        Button {
-                            showLog = true
-                        } label: {
-                            Image(systemName: "doc.text")
-                                .font(.caption2)
+            NavigationStack {
+                WatchConversationView(connectivity: connectivity, recorder: recorder)
+                    .navigationTitle("VoiceTranslate")
+                    .navigationBarTitleDisplayMode(.inline)
+                    .toolbar {
+                        ToolbarItem(placement: .topBarLeading) {
+                            Button {
+                                showLog = true
+                            } label: {
+                                Image(systemName: "doc.text")
+                            }
                         }
                     }
-                }
-                .sheet(isPresented: $showLog) {
+            }
+            .sheet(isPresented: $showLog) {
                     WatchLogView()
                 }
                 .onAppear {

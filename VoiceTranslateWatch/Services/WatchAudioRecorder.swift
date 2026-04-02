@@ -40,17 +40,18 @@ final class WatchAudioRecorder {
 
         let maxSamples = Int(nativeFormat.sampleRate * 30)
 
-        inputNode.installTap(onBus: 0, bufferSize: 4096, format: nativeFormat) { [weak self] buffer, _ in
-            guard let self else { return }
+        // Audio tap runs on a realtime thread — NO MainActor dispatch, NO Task, lock only
+        nonisolated(unsafe) let unsafeSelf = self
+        inputNode.installTap(onBus: 0, bufferSize: 4096, format: nativeFormat) { buffer, _ in
             guard let channelData = buffer.floatChannelData?[0] else { return }
             let frameCount = Int(buffer.frameLength)
             guard frameCount > 0 else { return }
             let samples = Array(UnsafeBufferPointer(start: channelData, count: frameCount))
-            self.lock.lock()
-            if self.audioBuffer.count < maxSamples {
-                self.audioBuffer.append(contentsOf: samples)
+            unsafeSelf.lock.lock()
+            if unsafeSelf.audioBuffer.count < maxSamples {
+                unsafeSelf.audioBuffer.append(contentsOf: samples)
             }
-            self.lock.unlock()
+            unsafeSelf.lock.unlock()
         }
 
         WatchCrashLog.log("startCapture: prepare + start engine")
