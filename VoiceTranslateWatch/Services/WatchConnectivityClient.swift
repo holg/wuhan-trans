@@ -25,17 +25,20 @@ final class WatchConnectivityClient: NSObject {
     }
 
     func sendAudio(_ samples: [Float], source: SupportedLanguage, target: SupportedLanguage) {
+        WatchCrashLog.log("sendAudio: \(samples.count) samples, \(source.rawValue)→\(target.rawValue)")
+
         guard let session, session.isReachable else {
             errorMessage = "iPhone not reachable"
+            WatchCrashLog.log("sendAudio: iPhone not reachable")
             return
         }
 
         let audioData = samples.withUnsafeBytes { Data($0) }
-        print("[Watch] Audio data size: \(audioData.count / 1024) KB (\(samples.count) samples)")
+        WatchCrashLog.log("sendAudio: data size = \(audioData.count / 1024) KB")
 
-        // Limit to ~2 MB (about 15 seconds at 16kHz)
         guard audioData.count < 4_000_000 else {
             errorMessage = "Recording too long"
+            WatchCrashLog.log("sendAudio: too large, aborting")
             return
         }
 
@@ -53,12 +56,12 @@ final class WatchConnectivityClient: NSObject {
             .appending(path: "watch_audio_\(UUID().uuidString).pcm")
         do {
             try audioData.write(to: tempURL)
-            print("[Watch] Wrote temp file, transferring...")
+            WatchCrashLog.log("sendAudio: transferring file...")
             session.transferFile(tempURL, metadata: metadata)
         } catch {
             isSending = false
             errorMessage = "Failed: \(error.localizedDescription)"
-            print("[Watch] Failed to write audio: \(error)")
+            WatchCrashLog.log("sendAudio: FAILED: \(error)")
         }
     }
 }
