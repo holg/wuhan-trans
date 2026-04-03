@@ -3,6 +3,13 @@ import SwiftUI
 struct SettingsView: View {
     @Bindable var viewModel: ConversationViewModel
 
+    private var relayURLBinding: Binding<String> {
+        Binding(
+            get: { UserDefaults.standard.string(forKey: "relayServerURL") ?? RelaySessionManager.defaultServerURL },
+            set: { UserDefaults.standard.set($0, forKey: "relayServerURL") }
+        )
+    }
+
     var body: some View {
         Form {
             Section("Speech Recognition") {
@@ -30,6 +37,17 @@ struct SettingsView: View {
             }
 
             watchDebugSection
+
+            Section("Relay Server") {
+                TextField("Server URL", text: relayURLBinding)
+                    .textFieldStyle(.roundedBorder)
+                    .font(.caption)
+                    .autocorrectionDisabled()
+                    #if os(iOS)
+                    .textInputAutocapitalization(.never)
+                    .keyboardType(.URL)
+                    #endif
+            }
         }
         .formStyle(.grouped)
         .navigationTitle("Settings")

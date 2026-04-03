@@ -14,22 +14,32 @@ final class RelaySessionManager: SessionTransport {
     private var webSocketTask: URLSessionWebSocketTask?
     private var receiveTask: Task<Void, Never>?
     private var pingTask: Task<Void, Never>?
-    private let serverURL: URL
+    private var serverURL: URL
 
-    init(serverURL: URL = URL(string: "wss://relay.voicetranslator.app")!) {
-        self.serverURL = serverURL
+    static let defaultServerURL = "wss://relay.voicetranslator.app"
+
+    init() {
+        let saved = UserDefaults.standard.string(forKey: "relayServerURL") ?? Self.defaultServerURL
+        self.serverURL = URL(string: saved) ?? URL(string: Self.defaultServerURL)!
+    }
+
+    func updateServerURL(_ urlString: String) {
+        guard let url = URL(string: urlString) else { return }
+        serverURL = url
+        UserDefaults.standard.set(urlString, forKey: "relayServerURL")
     }
 
     // MARK: - Room management
 
+    private var baseHTTPURL: String {
+        let scheme = serverURL.scheme == "wss" ? "https" : "http"
+        let host = serverURL.host() ?? "localhost"
+        let port = serverURL.port.map { ":\($0)" } ?? ""
+        return "\(scheme)://\(host)\(port)"
+    }
+
     func createRoom() async throws {
-        let createURL = serverURL
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .appending(path: "room")
-        // Build the URL from the server base
-        let baseURL = serverURL.scheme.map { "\($0)://\(serverURL.host() ?? "localhost"):\(serverURL.port ?? 443)" } ?? "https://localhost"
-        let url = URL(string: "\(baseURL)/room")!
+        let url = URL(string: "\(baseHTTPURL)/room")!
 
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
@@ -82,8 +92,7 @@ final class RelaySessionManager: SessionTransport {
     // MARK: - WebSocket
 
     private func connectWebSocket(code: String) {
-        let baseURL = serverURL.scheme.map { "\($0)://\(serverURL.host() ?? "localhost"):\(serverURL.port ?? 443)" } ?? "wss://localhost"
-        let wsURL = URL(string: "\(baseURL)/ws/\(code)")!
+        let wsURL = URL(string: "\(serverURL.absoluteString)/ws/\(code)")!
         let task = URLSession.shared.webSocketTask(with: wsURL)
         task.resume()
         webSocketTask = task
