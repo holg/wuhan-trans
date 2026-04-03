@@ -81,14 +81,25 @@ struct ConversationView: View {
     private var bottomBar: some View {
         VStack(spacing: 4) {
             if viewModel.isLoadingModel {
-                Text("Loading \(viewModel.currentEngine.displayName)...")
-                    .font(.caption2)
-                    .foregroundStyle(.orange)
+                HStack(spacing: 6) {
+                    ProgressView()
+                        .scaleEffect(0.7)
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text("Loading \(viewModel.currentEngine.displayName)...")
+                            .font(.caption2)
+                            .foregroundStyle(.orange)
+                        let mem = MemoryMonitor()
+                        Text("\(mem.availableMemoryMB) MB free — \(viewModel.currentEngine.modelDescription)")
+                            .font(.system(size: 9))
+                            .foregroundStyle(.secondary)
+                    }
+                }
             } else if let error = viewModel.errorMessage {
                 Text(error)
                     .font(.caption2)
                     .foregroundStyle(.red)
-                    .lineLimit(2)
+                    .lineLimit(3)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
 
             HStack(spacing: 8) {

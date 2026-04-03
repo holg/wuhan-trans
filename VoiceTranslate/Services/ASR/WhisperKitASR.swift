@@ -20,7 +20,13 @@ final class WhisperKitASR: ASRService, @unchecked Sendable {
         }
 
         let repo = engine.huggingFaceRepo
-        print("[WhisperKit] Loading model=\(modelName) repo=\(repo ?? "default")")
+        let mem = MemoryMonitor()
+        print("[WhisperKit] Loading model=\(modelName) repo=\(repo ?? "default") freeMB=\(mem.availableMemoryMB)")
+
+        if mem.availableMemoryMB < 500 {
+            throw WhisperKitASRError.insufficientMemory(available: mem.availableMemoryMB)
+        }
+
         let config = WhisperKitConfig(
             model: modelName,
             modelRepo: repo,
@@ -30,12 +36,12 @@ final class WhisperKitASR: ASRService, @unchecked Sendable {
         )
         let kit = try await WhisperKit(config)
 
-        // Verify the model actually loaded
+        let memAfter = MemoryMonitor()
         guard kit.modelState == .loaded else {
-            print("[WhisperKit] Model state: \(kit.modelState) — not loaded!")
+            print("[WhisperKit] Model state: \(kit.modelState) — not loaded! freeMB=\(memAfter.availableMemoryMB)")
             throw WhisperKitASRError.modelNotLoaded
         }
-        print("[WhisperKit] ✓ Model loaded, state=\(kit.modelState)")
+        print("[WhisperKit] ✓ Loaded, state=\(kit.modelState) freeMB=\(memAfter.availableMemoryMB)")
         whisperKit = kit
     }
 
@@ -133,11 +139,13 @@ final class WhisperKitASR: ASRService, @unchecked Sendable {
 enum WhisperKitASRError: Error, LocalizedError {
     case invalidEngine
     case modelNotLoaded
+    case insufficientMemory(available: Int)
 
     var errorDescription: String? {
         switch self {
         case .invalidEngine: "Invalid WhisperKit engine configuration"
-        case .modelNotLoaded: "WhisperKit model not loaded"
+        case .modelNotLoaded: "WhisperKit model failed to load — try a smaller model"
+        case .insufficientMemory(let mb): "Not enough memory (\(mb) MB free) — try a smaller model"
         }
     }
 }
