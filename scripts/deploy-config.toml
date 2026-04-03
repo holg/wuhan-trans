@@ -12,6 +12,6 @@ site_url = "wss://voice.rlxapi.eu"
 target_triple = "x86_64-unknown-linux-gnu"
 
 [service]
-listen_addr = "127.0.0.1:3000"
+listen_addr = "127.0.0.1:3088"
 db_path = "./data/conversations.db"
 rust_log = "info"
