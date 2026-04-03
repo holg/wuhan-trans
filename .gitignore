@@ -39,3 +39,4 @@ appstore/screenshots/
 
 # OS
 .DS_Store
+relay-server/target/
