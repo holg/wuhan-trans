@@ -93,8 +93,18 @@ struct RelayMessage {
     source_language: String,
     #[serde(rename = "senderName", default)]
     sender_name: String,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "deserialize_timestamp")]
     timestamp: String,
+}
+
+fn deserialize_timestamp<'de, D: serde::Deserializer<'de>>(d: D) -> Result<String, D::Error> {
+    use serde::de::Error;
+    let v = serde_json::Value::deserialize(d)?;
+    match v {
+        serde_json::Value::String(s) => Ok(s),
+        serde_json::Value::Number(n) => Ok(n.to_string()),
+        _ => Ok(String::new()),
+    }
 }
 
 #[tokio::main]
