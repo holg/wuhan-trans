@@ -16,7 +16,7 @@ final class RelaySessionManager: SessionTransport {
     private var pingTask: Task<Void, Never>?
     private var serverURL: URL
 
-    static let defaultServerURL = "wss://relay.voicetranslator.app"
+    static let defaultServerURL = "wss://voice.rlxapi.eu"
 
     init() {
         let saved = UserDefaults.standard.string(forKey: "relayServerURL") ?? Self.defaultServerURL
