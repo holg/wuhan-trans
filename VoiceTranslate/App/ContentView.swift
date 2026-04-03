@@ -73,8 +73,17 @@ struct ContentView: View {
                 Label("Settings", systemImage: "gear").tag("settings")
             }
             .navigationTitle("VoiceTranslate")
+        } detail: {
+            Group {
+                switch selectedTab {
+                case "settings":
+                    SettingsView(viewModel: viewModel)
+                default:
+                    ConversationView(viewModel: viewModel)
+                }
+            }
             .toolbar {
-                ToolbarItem {
+                ToolbarItem(placement: .primaryAction) {
                     Button {
                         showPeerConnection = true
                     } label: {
@@ -84,13 +93,6 @@ struct ContentView: View {
                             .foregroundStyle(isConnected ? .green : .primary)
                     }
                 }
-            }
-        } detail: {
-            switch selectedTab {
-            case "settings":
-                SettingsView(viewModel: viewModel)
-            default:
-                ConversationView(viewModel: viewModel)
             }
         }
         .sheet(isPresented: $showPeerConnection) {

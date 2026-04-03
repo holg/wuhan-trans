@@ -82,6 +82,40 @@ final class ConversationViewModel {
         }
     }
 
+    func translateTypedText(_ text: String) {
+        guard !text.isEmpty, !isProcessing else { return }
+        isProcessing = true
+        errorMessage = nil
+
+        Task {
+            defer { isProcessing = false }
+            do {
+                guard let session = translationSession else {
+                    errorMessage = "Translation not ready"
+                    return
+                }
+                nonisolated(unsafe) let s = session
+                let response = try await s.translate(text)
+
+                let message = ConversationMessage(
+                    originalText: text,
+                    translatedText: response.targetText,
+                    sourceLanguage: sourceLanguage,
+                    targetLanguage: targetLanguage
+                )
+                messages.append(message)
+
+                if let peer = peerSession, peer.connectionState == .connected {
+                    try? peer.send(PeerMessage(from: message))
+                }
+
+                await tts.speak(text: response.targetText, language: targetLanguage)
+            } catch {
+                errorMessage = error.localizedDescription
+            }
+        }
+    }
+
     func startListening() {
         guard !isRecording, !isProcessing, !isLoadingModel else { return }
 

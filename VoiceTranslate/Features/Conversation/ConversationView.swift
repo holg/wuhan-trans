@@ -3,6 +3,7 @@ import Translation
 
 struct ConversationView: View {
     @Bindable var viewModel: ConversationViewModel
+    @State private var typedText = ""
 
     var body: some View {
         VStack(spacing: 0) {
@@ -90,37 +91,34 @@ struct ConversationView: View {
                     .lineLimit(2)
             }
 
-            HStack {
-                VStack(alignment: .leading, spacing: 1) {
-                    Text(viewModel.currentEngine.displayName)
-                        .font(.caption2)
-                        .foregroundStyle(.primary)
-                    if let loaded = viewModel.loadedEngine, loaded == viewModel.currentEngine {
-                        Text("active")
-                            .font(.system(size: 9))
-                            .foregroundStyle(.green)
-                    } else if viewModel.loadedEngine != nil {
-                        Text("not loaded")
-                            .font(.system(size: 9))
-                            .foregroundStyle(.orange)
+            HStack(spacing: 8) {
+                TextField("Type to translate...", text: $typedText)
+                    .textFieldStyle(.roundedBorder)
+                    .font(.callout)
+                    .onSubmit {
+                        viewModel.translateTypedText(typedText)
+                        typedText = ""
                     }
+
+                if !typedText.isEmpty {
+                    Button {
+                        viewModel.translateTypedText(typedText)
+                        typedText = ""
+                    } label: {
+                        Image(systemName: "arrow.up.circle.fill")
+                            .font(.title2)
+                            .foregroundStyle(.blue)
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(viewModel.isProcessing)
+                } else {
+                    WalkieTalkieButton(
+                        isRecording: viewModel.isRecording,
+                        isProcessing: viewModel.isProcessing || viewModel.isLoadingModel,
+                        onStartRecording: { viewModel.startListening() },
+                        onStopRecording: { viewModel.stopAndTranslate() }
+                    )
                 }
-
-                Spacer()
-
-                WalkieTalkieButton(
-                    isRecording: viewModel.isRecording,
-                    isProcessing: viewModel.isProcessing || viewModel.isLoadingModel,
-                    onStartRecording: { viewModel.startListening() },
-                    onStopRecording: { viewModel.stopAndTranslate() }
-                )
-
-                Spacer()
-
-                // Symmetry spacer
-                Text(viewModel.currentEngine.displayName)
-                    .font(.caption2)
-                    .foregroundStyle(.clear)
             }
         }
     }
