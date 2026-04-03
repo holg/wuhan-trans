@@ -274,8 +274,18 @@ async fn handle_ws(socket: WebSocket, code: String, state: AppState) {
                     // Data message — broadcast to all others
                     if let Some(room) = state_clone.rooms.get(&code_clone2) {
                         // Save if enabled
-                        if room.all_save_enabled() {
+                        let save_active = room.all_save_enabled();
+                        tracing::debug!("Data msg from slot {slot}, save_active={save_active}, conv_id={:?}", room.conversation_id);
+                        if save_active {
                             if let Some(conv_id) = room.conversation_id {
+                                match serde_json::from_str::<RelayMessage>(text_str) {
+                                    Ok(ref pm) => {
+                                        tracing::info!("Saving message: original='{}', sender='{}'", &pm.original_text.chars().take(50).collect::<String>(), &pm.sender_name);
+                                    }
+                                    Err(e) => {
+                                        tracing::warn!("Failed to parse RelayMessage: {e}");
+                                    }
+                                }
                                 if let Ok(pm) = serde_json::from_str::<RelayMessage>(text_str) {
                                     state_clone.db.save_message(
                                         conv_id,
