@@ -105,9 +105,7 @@ final class ConversationViewModel {
                 )
                 messages.append(message)
 
-                if let peer = peerSession, peer.connectionState == .connected {
-                    try? peer.send(PeerMessage(from: message))
-                }
+                sendToPeer(message)
 
                 await tts.speak(text: response.targetText, language: targetLanguage)
             } catch {
@@ -185,9 +183,7 @@ final class ConversationViewModel {
                 messages.append(message)
                 isProcessing = false
 
-                if let peer = peerSession, peer.connectionState == .connected {
-                    try? peer.send(PeerMessage(from: message))
-                }
+                sendToPeer(message)
 
                 await tts.speak(text: response.targetText, language: targetLanguage)
             } catch {
@@ -241,6 +237,18 @@ final class ConversationViewModel {
 
     // MARK: - Peer
 
+    private func sendToPeer(_ message: ConversationMessage) {
+        guard let peer = peerSession, peer.connectionState == .connected else { return }
+        if peer is RelaySessionManager {
+            // Relay mode: send original text only, each receiver translates locally
+            let deviceName = (peer as? RelaySessionManager)?.deviceName ?? ""
+            try? peer.send(PeerMessage(originalText: message.originalText, sourceLanguage: message.sourceLanguage, senderName: deviceName))
+        } else {
+            // Local peer mode: send pre-translated
+            try? peer.send(PeerMessage(from: message))
+        }
+    }
+
     func configurePeerSession(_ session: any SessionTransport) {
         self.peerSession = session
         session.onMessageReceived = { [weak self] msg in
@@ -249,10 +257,34 @@ final class ConversationViewModel {
     }
 
     private func receiveRemoteMessage(_ peerMessage: PeerMessage) {
-        let message = ConversationMessage(peerMessage: peerMessage)
-        messages.append(message)
-        Task {
-            await tts.speak(text: peerMessage.translatedText, language: peerMessage.targetLanguage)
+        if peerMessage.needsTranslation {
+            // Relay mode: translate locally into our target language
+            Task {
+                do {
+                    guard let session = translationSession else { return }
+                    nonisolated(unsafe) let s = session
+                    let response = try await s.translate(peerMessage.originalText)
+
+                    let message = ConversationMessage(
+                        originalText: peerMessage.originalText,
+                        translatedText: response.targetText,
+                        sourceLanguage: peerMessage.sourceLanguage,
+                        targetLanguage: targetLanguage,
+                        isRemote: true
+                    )
+                    messages.append(message)
+                    await tts.speak(text: response.targetText, language: targetLanguage)
+                } catch {
+                    print("[VM] Remote translation failed: \(error)")
+                }
+            }
+        } else {
+            // Local peer mode: already translated
+            let message = ConversationMessage(peerMessage: peerMessage)
+            messages.append(message)
+            Task {
+                await tts.speak(text: peerMessage.translatedText, language: peerMessage.targetLanguage)
+            }
         }
     }
 

@@ -15,23 +15,66 @@ use std::{sync::Arc, time::{Duration, Instant}};
 use tokio::sync::mpsc;
 use tower_http::cors::CorsLayer;
 
+const MAX_CLIENTS_PER_ROOM: usize = 10;
+
 #[derive(Clone)]
 struct AppState {
     rooms: Arc<DashMap<String, Room>>,
     db: Arc<ConversationDb>,
 }
 
+struct Client {
+    tx: mpsc::UnboundedSender<Message>,
+    name: String,
+    save_enabled: bool,
+}
+
 struct Room {
     created_at: Instant,
-    clients: [Option<mpsc::UnboundedSender<Message>>; 2],
-    client_names: [Option<String>; 2],
-    save_flags: [bool; 2],
+    clients: Vec<Option<Client>>,
     conversation_id: Option<i64>,
+}
+
+impl Room {
+    fn new() -> Self {
+        Self {
+            created_at: Instant::now(),
+            clients: Vec::new(),
+            conversation_id: None,
+        }
+    }
+
+    fn active_count(&self) -> usize {
+        self.clients.iter().filter(|c| c.is_some()).count()
+    }
+
+    fn all_save_enabled(&self) -> bool {
+        let active: Vec<_> = self.clients.iter().filter_map(|c| c.as_ref()).collect();
+        active.len() >= 2 && active.iter().all(|c| c.save_enabled)
+    }
+
+    fn active_names(&self) -> Vec<String> {
+        self.clients.iter().filter_map(|c| c.as_ref().map(|c| c.name.clone())).collect()
+    }
+
+    fn broadcast(&self, msg: &str, exclude_slot: Option<usize>) {
+        for (i, client) in self.clients.iter().enumerate() {
+            if Some(i) == exclude_slot { continue; }
+            if let Some(c) = client {
+                let _ = c.tx.send(Message::Text(msg.to_string().into()));
+            }
+        }
+    }
+
+    fn broadcast_all(&self, msg: &str) {
+        self.broadcast(msg, None);
+    }
 }
 
 #[derive(Serialize)]
 struct RoomResponse {
     code: String,
+    max_clients: usize,
 }
 
 #[derive(Deserialize)]
@@ -39,19 +82,17 @@ struct ControlMessage {
     #[serde(rename = "type")]
     msg_type: String,
     #[serde(default)]
-    peer: Option<String>,
+    name: Option<String>,
 }
 
 #[derive(Deserialize, Default)]
-struct PeerMessage {
+struct RelayMessage {
     #[serde(rename = "originalText", default)]
     original_text: String,
-    #[serde(rename = "translatedText", default)]
-    translated_text: String,
     #[serde(rename = "sourceLanguage", default)]
     source_language: String,
-    #[serde(rename = "targetLanguage", default)]
-    target_language: String,
+    #[serde(rename = "senderName", default)]
+    sender_name: String,
     #[serde(default)]
     timestamp: String,
 }
@@ -66,14 +107,13 @@ async fn main() {
         db: Arc::new(ConversationDb::new(&db_path)),
     };
 
-    // Background room cleanup
     let rooms_clone = state.rooms.clone();
     tokio::spawn(async move {
         loop {
             tokio::time::sleep(Duration::from_secs(60)).await;
             let now = Instant::now();
             rooms_clone.retain(|_, room| {
-                let has_clients = room.clients.iter().any(|c| c.is_some());
+                let has_clients = room.active_count() > 0;
                 let expired = now.duration_since(room.created_at) > Duration::from_secs(300);
                 has_clients || !expired
             });
@@ -103,19 +143,9 @@ async fn create_room(State(state): State<AppState>) -> Json<RoomResponse> {
         }
     };
 
-    state.rooms.insert(
-        code.clone(),
-        Room {
-            created_at: Instant::now(),
-            clients: [None, None],
-            client_names: [None, None],
-            save_flags: [false, false],
-            conversation_id: None,
-        },
-    );
-
+    state.rooms.insert(code.clone(), Room::new());
     tracing::info!("Room created: {code}");
-    Json(RoomResponse { code })
+    Json(RoomResponse { code, max_clients: MAX_CLIENTS_PER_ROOM })
 }
 
 async fn ws_handler(
@@ -130,67 +160,65 @@ async fn handle_ws(socket: WebSocket, code: String, state: AppState) {
     let (mut ws_tx, mut ws_rx) = socket.split();
     let (tx, mut rx) = mpsc::unbounded_channel::<Message>();
 
-    // Find a slot in the room
+    // Find or create a slot
     let slot = {
         let mut room = match state.rooms.get_mut(&code) {
             Some(r) => r,
             None => {
-                let _ = ws_tx
-                    .send(Message::Text(
-                        serde_json::json!({"type":"error","message":"room not found"}).to_string().into(),
-                    ))
-                    .await;
+                let _ = ws_tx.send(Message::Text(
+                    serde_json::json!({"type":"error","message":"room not found"}).to_string().into(),
+                )).await;
                 return;
             }
         };
 
-        if room.clients[0].is_none() {
-            room.clients[0] = Some(tx.clone());
-            0
-        } else if room.clients[1].is_none() {
-            room.clients[1] = Some(tx.clone());
-            1
-        } else {
+        if room.active_count() >= MAX_CLIENTS_PER_ROOM {
             drop(room);
-            let _ = ws_tx
-                .send(Message::Text(
-                    serde_json::json!({"type":"error","message":"room full"}).to_string().into(),
-                ))
-                .await;
+            let _ = ws_tx.send(Message::Text(
+                serde_json::json!({"type":"error","message":"room full"}).to_string().into(),
+            )).await;
             return;
         }
+
+        // Find first empty slot or append
+        let slot = room.clients.iter().position(|c| c.is_none());
+        let slot = match slot {
+            Some(i) => {
+                room.clients[i] = Some(Client {
+                    tx: tx.clone(),
+                    name: format!("User {}", i + 1),
+                    save_enabled: false,
+                });
+                i
+            }
+            None => {
+                let i = room.clients.len();
+                room.clients.push(Some(Client {
+                    tx: tx.clone(),
+                    name: format!("User {}", i + 1),
+                    save_enabled: false,
+                }));
+                i
+            }
+        };
+
+        slot
     };
 
-    let other = 1 - slot;
-    tracing::info!("Client {slot} joined room {code}");
+    tracing::info!("Client {slot} joined room {code} ({} total)", {
+        state.rooms.get(&code).map(|r| r.active_count()).unwrap_or(0)
+    });
 
-    // Notify both if paired
-    if let Some(room) = state.rooms.get(&code) {
-        if room.clients[0].is_some() && room.clients[1].is_some() {
-            let name_a = room.client_names[0].clone().unwrap_or_else(|| "Device A".into());
-            let name_b = room.client_names[1].clone().unwrap_or_else(|| "Device B".into());
-            if let Some(ref c) = room.clients[0] {
-                let _ = c.send(Message::Text(
-                    serde_json::json!({"type":"paired","peer": name_b}).to_string().into(),
-                ));
-            }
-            if let Some(ref c) = room.clients[1] {
-                let _ = c.send(Message::Text(
-                    serde_json::json!({"type":"paired","peer": name_a}).to_string().into(),
-                ));
-            }
-        }
-    }
+    // Notify everyone about the roster
+    send_roster(&state, &code);
 
     // Forward messages from channel to WebSocket
     let code_clone = code.clone();
     let send_task = tokio::spawn(async move {
         while let Some(msg) = rx.recv().await {
-            if ws_tx.send(msg).await.is_err() {
-                break;
-            }
+            if ws_tx.send(msg).await.is_err() { break; }
         }
-        tracing::info!("Send task ended for room {code_clone} slot {slot}");
+        tracing::debug!("Send task ended for room {code_clone} slot {slot}");
     });
 
     // Read messages from WebSocket
@@ -202,77 +230,77 @@ async fn handle_ws(socket: WebSocket, code: String, state: AppState) {
                 Message::Text(text) => {
                     let text_str: &str = &text;
 
-                    // Check if it's a control message
+                    // Control messages
                     if let Ok(ctrl) = serde_json::from_str::<ControlMessage>(text_str) {
                         match ctrl.msg_type.as_str() {
+                            "set_name" => {
+                                if let Some(name) = ctrl.name {
+                                    if let Some(mut room) = state_clone.rooms.get_mut(&code_clone2) {
+                                        if let Some(ref mut c) = room.clients.get_mut(slot).and_then(|c| c.as_mut()) {
+                                            c.name = name;
+                                        }
+                                    }
+                                    send_roster(&state_clone, &code_clone2);
+                                }
+                                continue;
+                            }
                             "enable_save" => {
                                 if let Some(mut room) = state_clone.rooms.get_mut(&code_clone2) {
-                                    room.save_flags[slot] = true;
-                                    if room.save_flags[0] && room.save_flags[1] {
+                                    if let Some(ref mut c) = room.clients.get_mut(slot).and_then(|c| c.as_mut()) {
+                                        c.save_enabled = true;
+                                    }
+                                    if room.all_save_enabled() {
                                         if room.conversation_id.is_none() {
-                                            room.conversation_id =
-                                                Some(state_clone.db.create_conversation(&code_clone2));
+                                            room.conversation_id = Some(state_clone.db.create_conversation(&code_clone2));
                                         }
-                                        // Notify both
-                                        for c in room.clients.iter().flatten() {
-                                            let _ = c.send(Message::Text(
-                                                serde_json::json!({"type":"save_status","active":true})
-                                                    .to_string().into(),
-                                            ));
-                                        }
+                                        room.broadcast_all(&serde_json::json!({"type":"save_status","active":true}).to_string());
                                     }
                                 }
                                 continue;
                             }
                             "disable_save" => {
                                 if let Some(mut room) = state_clone.rooms.get_mut(&code_clone2) {
-                                    room.save_flags[slot] = false;
-                                    for c in room.clients.iter().flatten() {
-                                        let _ = c.send(Message::Text(
-                                            serde_json::json!({"type":"save_status","active":false})
-                                                .to_string().into(),
-                                        ));
+                                    if let Some(ref mut c) = room.clients.get_mut(slot).and_then(|c| c.as_mut()) {
+                                        c.save_enabled = false;
                                     }
+                                    room.broadcast_all(&serde_json::json!({"type":"save_status","active":false}).to_string());
                                 }
                                 continue;
                             }
-                            _ => {} // Not a recognized control message, relay it
+                            _ => {}
                         }
                     }
 
-                    // Save to DB if both opted in
+                    // Data message — broadcast to all others
                     if let Some(room) = state_clone.rooms.get(&code_clone2) {
-                        if room.save_flags[0] && room.save_flags[1] {
+                        // Save if enabled
+                        if room.all_save_enabled() {
                             if let Some(conv_id) = room.conversation_id {
-                                if let Ok(pm) = serde_json::from_str::<PeerMessage>(text_str) {
-                                    let sender = if slot == 0 { "A" } else { "B" };
+                                if let Ok(pm) = serde_json::from_str::<RelayMessage>(text_str) {
                                     state_clone.db.save_message(
                                         conv_id,
                                         &pm.original_text,
-                                        &pm.translated_text,
+                                        "",  // no pre-translation in multi-user mode
                                         &pm.source_language,
-                                        &pm.target_language,
+                                        "",
                                         &pm.timestamp,
-                                        sender,
+                                        &pm.sender_name,
                                     );
                                 }
                             }
                         }
 
-                        // Relay to other client
-                        if let Some(ref c) = room.clients[other] {
-                            let _ = c.send(Message::Text(text));
-                        }
+                        // Broadcast to all except sender
+                        room.broadcast(text_str, Some(slot));
                     }
                 }
                 Message::Close(_) => break,
                 _ => {}
             }
         }
-        tracing::info!("Recv task ended for room {code_clone2} slot {slot}");
+        tracing::debug!("Recv task ended for room {code_clone2} slot {slot}");
     });
 
-    // Wait for either task to finish
     tokio::select! {
         _ = send_task => {},
         _ = recv_task => {},
@@ -280,18 +308,26 @@ async fn handle_ws(socket: WebSocket, code: String, state: AppState) {
 
     // Cleanup
     if let Some(mut room) = state.rooms.get_mut(&code) {
-        room.clients[slot] = None;
-        room.client_names[slot] = None;
-        room.save_flags[slot] = false;
-
-        // Notify other client
-        if let Some(ref c) = room.clients[other] {
-            let _ = c.send(Message::Text(
-                serde_json::json!({"type":"peer_left"}).to_string().into(),
-            ));
+        if slot < room.clients.len() {
+            room.clients[slot] = None;
         }
     }
+
     tracing::info!("Client {slot} left room {code}");
+    send_roster(&state, &code);
+}
+
+fn send_roster(state: &AppState, code: &str) {
+    if let Some(room) = state.rooms.get(code) {
+        let names = room.active_names();
+        let count = names.len();
+        let roster = serde_json::json!({
+            "type": "roster",
+            "participants": names,
+            "count": count,
+        });
+        room.broadcast_all(&roster.to_string());
+    }
 }
 
 async fn get_conversation(

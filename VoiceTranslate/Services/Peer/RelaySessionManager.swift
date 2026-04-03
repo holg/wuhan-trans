@@ -9,7 +9,15 @@ final class RelaySessionManager: SessionTransport {
     var onMessageReceived: (@MainActor (PeerMessage) -> Void)?
     var roomCode: String?
     var saveEnabled = false
-    var savingActive = false  // true when both sides agreed
+    var savingActive = false
+    var participants: [String] = []
+    var deviceName: String = {
+        #if os(iOS)
+        UIDevice.current.name
+        #else
+        Host.current().localizedName ?? "Mac"
+        #endif
+    }()
 
     private var webSocketTask: URLSessionWebSocketTask?
     private var receiveTask: Task<Void, Never>?
@@ -98,6 +106,10 @@ final class RelaySessionManager: SessionTransport {
         webSocketTask = task
         connectionState = .connecting
 
+        // Send our device name
+        let setName = "{\"type\":\"set_name\",\"name\":\"\(deviceName)\"}"
+        task.send(.string(setName)) { _ in }
+
         startReceiveLoop()
         startPingLoop()
     }
@@ -148,27 +160,37 @@ final class RelaySessionManager: SessionTransport {
     }
 
     private func handleMessage(_ text: String) {
-        // Check for control messages
         struct ControlMsg: Decodable {
             let type: String
             let peer: String?
             let active: Bool?
             let message: String?
+            let participants: [String]?
+            let count: Int?
         }
 
         if let ctrl = try? JSONDecoder().decode(ControlMsg.self, from: Data(text.utf8)) {
             switch ctrl.type {
+            case "roster":
+                let names = ctrl.participants ?? []
+                participants = names.filter { $0 != deviceName }
+                let count = ctrl.count ?? names.count
+                if count >= 2 {
+                    connectionState = .connected
+                    connectedPeerName = participants.joined(separator: ", ")
+                } else {
+                    connectionState = .connecting
+                    connectedPeerName = nil
+                }
+                print("[Relay] Roster: \(names) (\(count) total)")
             case "paired":
                 connectionState = .connected
                 connectedPeerName = ctrl.peer ?? "Remote Device"
-                print("[Relay] Paired with: \(connectedPeerName ?? "?")")
             case "peer_left":
-                connectionState = .disconnected
-                connectedPeerName = nil
-                print("[Relay] Peer left")
+                // Roster update will follow
+                break
             case "save_status":
                 savingActive = ctrl.active ?? false
-                print("[Relay] Save active: \(savingActive)")
             case "error":
                 print("[Relay] Error: \(ctrl.message ?? "unknown")")
                 disconnect()
