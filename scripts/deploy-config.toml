@@ -1,0 +1,24 @@
+# Deploy configuration for videocall-rs
+# Copy to deploy-config.toml and fill in your values.
+# deploy-config.toml is gitignored.
+
+[server]
+ssh_host = "iesna.eu"
+server_name = "voice.rlxapi.eu"
+remote_base = "/var/www/voice.rlxapi.eu"
+app_name = "voice-translator"
+site_url = "wss://voice.rlxapi.eu"
+
+[build]
+target_triple = "x86_64-unknown-linux-gnu"
+rust_toolchain = "stable"
+wasm_opt_version = "version_123"
+
+[service]
+# These are written to .env on the server during setup (only if .env doesn't exist yet)
+listen_addr = "127.0.0.1:8088"
+database_url = "sqlite:./data/translator.db"
+cookie_secure = "true"
+rust_log = "info"
+ws_port = "8088"
+# jwt_secret and admin_secret are generated during setup if not provided

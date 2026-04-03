@@ -117,6 +117,82 @@ extension PhoneConnectivityService: WCSessionDelegate {
         }
     }
 
+    // Receive text-for-translation from watch (dictation mode)
+    nonisolated func session(_ session: WCSession, didReceiveMessage message: [String: Any], replyHandler: @escaping ([String: Any]) -> Void) {
+        guard let type = message["type"] as? String else { return }
+
+        if type == "translateText",
+           let text = message["text"] as? String,
+           let sourceRaw = message["source"] as? String,
+           let targetRaw = message["target"] as? String,
+           let source = SupportedLanguage(rawValue: sourceRaw),
+           let target = SupportedLanguage(rawValue: targetRaw) {
+            nonisolated(unsafe) let reply = replyHandler
+            print("[PhoneWC] Watch dictation: \"\(text.prefix(50))\" \(source.rawValue)→\(target.rawValue)")
+            Task { @MainActor in
+                self.lastEvent = "Watch text: \(text.prefix(30))"
+                guard let vm = self.viewModel else {
+                    reply(["error": "ViewModel not ready"])
+                    return
+                }
+                do {
+                    // Use the existing translation session on the phone
+                    guard let ts = vm.translationSession else {
+                        reply(["error": "Translation not ready"])
+                        return
+                    }
+                    nonisolated(unsafe) let s = ts
+                    let response = try await s.translate(text)
+
+                    let msg = ConversationMessage(
+                        originalText: text,
+                        translatedText: response.targetText,
+                        sourceLanguage: source,
+                        targetLanguage: target,
+                        isRemote: true
+                    )
+                    vm.messages.append(msg)
+
+                    // Send result back to watch
+                    if let data = try? JSONEncoder().encode(msg) {
+                        reply(["result": String(data: data, encoding: .utf8) ?? ""])
+                    }
+
+                    // TTS on phone too
+                    self.lastEvent = "Translated for watch: \(response.targetText.prefix(30))"
+                } catch {
+                    reply(["error": error.localizedDescription])
+                    self.lastEvent = "Watch translation failed: \(error.localizedDescription)"
+                }
+            }
+        }
+    }
+
+    // Receive synced translation from watch
+    nonisolated func session(_ session: WCSession, didReceiveMessageData messageData: Data) {
+        guard let msg = try? WatchMessage.decode(from: messageData),
+              msg.type == .translationResult,
+              let result = try? JSONDecoder().decode(TranslationResultPayload.self, from: msg.payload) else {
+            return
+        }
+        print("[PhoneWC] Received synced translation from watch")
+        Task { @MainActor in
+            self.lastEvent = "Watch sync: translation received"
+            // Add to conversation on the phone
+            let message = ConversationMessage(
+                id: result.message.id,
+                originalText: result.message.originalText,
+                translatedText: result.message.translatedText,
+                sourceLanguage: result.message.sourceLanguage,
+                targetLanguage: result.message.targetLanguage,
+                timestamp: result.message.timestamp,
+                isRemote: true
+            )
+            self.viewModel?.messages.append(message)
+        }
+    }
+
+    // Receive audio file from watch (legacy connected mode)
     nonisolated func session(_ session: WCSession, didReceive file: WCSessionFile) {
         guard let metadata = file.metadata,
               let type = metadata["type"] as? String,

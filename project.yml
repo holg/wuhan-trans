@@ -72,6 +72,7 @@ targets:
       properties:
         WKApplication: true
         NSMicrophoneUsageDescription: "VoiceTranslate needs microphone access to record speech for translation."
+        NSSpeechRecognitionUsageDescription: "VoiceTranslate uses speech recognition to transcribe your voice."
     entitlements:
       path: VoiceTranslateWatch/VoiceTranslateWatch.entitlements
     settings:

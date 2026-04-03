@@ -2,14 +2,14 @@ import SwiftUI
 
 @main
 struct VoiceTranslateWatchApp: App {
+    @State private var translator = WatchTranslator()
     @State private var connectivity = WatchConnectivityClient()
-    @State private var recorder = WatchAudioRecorder()
     @State private var showLog = false
 
     var body: some Scene {
         WindowGroup {
             NavigationStack {
-                WatchConversationView(connectivity: connectivity, recorder: recorder)
+                WatchConversationView(translator: translator, connectivity: connectivity)
                     .navigationTitle("VoiceTranslate")
                     .navigationBarTitleDisplayMode(.inline)
                     .toolbar {
@@ -23,13 +23,14 @@ struct VoiceTranslateWatchApp: App {
                     }
             }
             .sheet(isPresented: $showLog) {
-                    WatchLogView()
-                }
-                .onAppear {
-                    let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "?"
-                    let build = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "?"
-                    WatchCrashLog.log("App launched v\(version)(\(build))")
-                }
+                WatchLogView()
+            }
+            .onAppear {
+                connectivity.translator = translator
+                let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "?"
+                let build = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "?"
+                WatchCrashLog.log("App launched v\(version)(\(build))")
+            }
         }
     }
 }

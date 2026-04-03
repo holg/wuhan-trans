@@ -20,6 +20,8 @@
 	<string>1</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>VoiceTranslate needs microphone access to record speech for translation.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>VoiceTranslate uses speech recognition to transcribe your voice.</string>
 	<key>WKApplication</key>
 	<true/>
 </dict>

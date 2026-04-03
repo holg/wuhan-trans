@@ -7,12 +7,9 @@ import WatchKit
 @MainActor
 final class WatchConnectivityClient: NSObject {
     var isReachable = false
-    var receivedMessages: [ConversationMessage] = []
-    var sourceLanguage: SupportedLanguage = .chinese
-    var targetLanguage: SupportedLanguage = .english
-    var isSending = false
     var errorMessage: String?
 
+    weak var translator: WatchTranslator?
     private var session: WCSession?
 
     override init() {
@@ -24,37 +21,56 @@ final class WatchConnectivityClient: NSObject {
         self.session = session
     }
 
+    /// Send dictated text to phone for translation (tiny payload, very fast)
+    func sendTextForTranslation(_ text: String, source: SupportedLanguage, target: SupportedLanguage) {
+        guard let session, session.isReachable else {
+            errorMessage = "iPhone not reachable"
+            return
+        }
+        errorMessage = nil
+
+        let payload: [String: String] = [
+            "type": "translateText",
+            "text": text,
+            "source": source.rawValue,
+            "target": target.rawValue,
+        ]
+
+        // Use sendMessage for instant delivery (text is ~100 bytes)
+        session.sendMessage(payload, replyHandler: { [weak self] reply in
+            // Reply contains the translation result
+            guard let resultJSON = reply["result"] as? String,
+                  let data = resultJSON.data(using: .utf8),
+                  let message = try? JSONDecoder().decode(ConversationMessage.self, from: data) else {
+                Task { @MainActor in
+                    self?.translator?.translationFailed("Invalid response from iPhone")
+                }
+                return
+            }
+            Task { @MainActor in
+                self?.translator?.didReceiveTranslation(message)
+            }
+        }, errorHandler: { [weak self] error in
+            Task { @MainActor in
+                self?.translator?.translationFailed(error.localizedDescription)
+            }
+        })
+    }
+
+    /// Sync a completed translation to the phone (best effort)
+    func syncMessage(_ message: ConversationMessage) {
+        guard let session, session.isReachable else { return }
+        let payload = TranslationResultPayload(message: message)
+        guard let payloadData = try? JSONEncoder().encode(payload),
+              let msgData = try? WatchMessage(type: .translationResult, payload: payloadData).encode() else { return }
+        session.sendMessageData(msgData, replyHandler: nil, errorHandler: nil)
+    }
+
     func sendCrashLog() {
         guard let session, session.isReachable else { return }
         let log = WatchCrashLog.read()
         let context: [String: Any] = ["type": "crashlog", "log": log]
         session.sendMessage(context, replyHandler: nil, errorHandler: nil)
-    }
-
-    func sendAudioFile(_ fileURL: URL, source: SupportedLanguage, target: SupportedLanguage) {
-        WatchCrashLog.log("sendAudio: \(source.rawValue)→\(target.rawValue)")
-
-        guard let session, session.isReachable else {
-            errorMessage = "iPhone not reachable"
-            WatchCrashLog.log("sendAudio: iPhone not reachable")
-            return
-        }
-
-        let size = (try? FileManager.default.attributesOfItem(atPath: fileURL.path())[.size] as? Int) ?? 0
-        WatchCrashLog.log("sendAudio: file size = \(size / 1024) KB")
-
-        isSending = true
-        errorMessage = nil
-
-        let metadata: [String: Any] = [
-            "type": "audioFile",
-            "source": source.rawValue,
-            "target": target.rawValue,
-            "format": "m4a"
-        ]
-
-        WatchCrashLog.log("sendAudio: transferring...")
-        session.transferFile(fileURL, metadata: metadata)
     }
 }
 
@@ -76,63 +92,19 @@ extension WatchConnectivityClient: WCSessionDelegate {
         }
     }
 
-    // Receive translation results from phone
+    // Receive language sync from phone
     nonisolated func session(_ session: WCSession, didReceiveMessageData messageData: Data) {
-        WatchCrashLog.log("didReceiveMessageData: \(messageData.count) bytes")
-
-        guard let msg = try? WatchMessage.decode(from: messageData) else {
-            WatchCrashLog.log("didReceiveMessageData: decode failed")
-            Task { @MainActor in self.isSending = false }
-            return
-        }
+        guard let msg = try? WatchMessage.decode(from: messageData) else { return }
 
         switch msg.type {
-        case .translationResult:
-            guard let result = try? JSONDecoder().decode(TranslationResultPayload.self, from: msg.payload) else {
-                WatchCrashLog.log("didReceiveMessageData: payload decode failed")
-                Task { @MainActor in self.isSending = false }
-                return
-            }
-            WatchCrashLog.log("didReceiveMessageData: got translation")
-            Task { @MainActor in
-                self.receivedMessages.append(result.message)
-                self.isSending = false
-                WKInterfaceDevice.current().play(.notification)
-            }
         case .languageSync:
             guard let sync = try? JSONDecoder().decode(LanguageSyncPayload.self, from: msg.payload) else { return }
             Task { @MainActor in
-                self.sourceLanguage = sync.sourceLanguage
-                self.targetLanguage = sync.targetLanguage
+                self.translator?.setSourceLanguage(sync.sourceLanguage)
+                self.translator?.setTargetLanguage(sync.targetLanguage)
             }
-        case .audioData:
+        default:
             break
         }
-    }
-
-    // Receive dictionary message (e.g. crash log ack)
-    nonisolated func session(_ session: WCSession, didReceiveMessage message: [String: Any]) {
-        WatchCrashLog.log("didReceiveMessage: \(message.keys)")
-    }
-
-    // Receive confirmation that file was delivered
-    nonisolated func session(_ session: WCSession, didFinish fileTransfer: WCSessionFileTransfer, error: Error?) {
-        WatchCrashLog.log("fileTransfer finished, error=\(error?.localizedDescription ?? "none")")
-        if let error {
-            Task { @MainActor in
-                self.isSending = false
-                self.errorMessage = "Send failed: \(error.localizedDescription)"
-            }
-        }
-        // Start a timeout — if no translation comes back in 30s, reset
-        Task { @MainActor in
-            try? await Task.sleep(for: .seconds(30))
-            if self.isSending {
-                WatchCrashLog.log("Translation timeout, resetting isSending")
-                self.isSending = false
-                self.errorMessage = "Translation timed out"
-            }
-        }
-        try? FileManager.default.removeItem(at: fileTransfer.file.fileURL)
     }
 }
