@@ -6,6 +6,7 @@ struct ContentView: View {
     @State private var showPeerConnection = false
     @State private var peerSession = PeerSessionManager()
     @State private var relaySession = RelaySessionManager()
+    @State private var selectedTab = "translate"
 
     private var isConnected: Bool {
         peerSession.connectionState == .connected || relaySession.connectionState == .connected
@@ -67,9 +68,9 @@ struct ContentView: View {
         }
         #else
         NavigationSplitView {
-            List {
-                NavigationLink("Translate", value: "conversation")
-                NavigationLink("Settings", value: "settings")
+            List(selection: $selectedTab) {
+                Label("Translate", systemImage: "mic.badge.waveform").tag("translate")
+                Label("Settings", systemImage: "gear").tag("settings")
             }
             .navigationTitle("VoiceTranslate")
             .toolbar {
@@ -85,7 +86,12 @@ struct ContentView: View {
                 }
             }
         } detail: {
-            ConversationView(viewModel: viewModel)
+            switch selectedTab {
+            case "settings":
+                SettingsView(viewModel: viewModel)
+            default:
+                ConversationView(viewModel: viewModel)
+            }
         }
         .sheet(isPresented: $showPeerConnection) {
             PeerConnectionView(

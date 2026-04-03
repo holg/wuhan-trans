@@ -1,0 +1,36 @@
+server {
+    server_name bimifc.de www.bimifc.de;
+    root /var/www/bimifc.de/html;
+    index index.html;
+
+    location / {
+        try_files $uri $uri/ =404;
+    }
+
+    listen [::]:443 ssl; # managed by Certbot
+    listen 443 ssl; # managed by Certbot
+    ssl_certificate /etc/letsencrypt/live/bimifc.de/fullchain.pem; # managed by Certbot
+    ssl_certificate_key /etc/letsencrypt/live/bimifc.de/privkey.pem; # managed by Certbot
+    include /etc/letsencrypt/options-ssl-nginx.conf; # managed by Certbot
+    ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem; # managed by Certbot
+    access_log  /var/log/nginx/bimifc_de.access.log;
+    error_log  /var/log/nginx/bimifc_de.error.log;
+
+
+}
+server {
+    if ($host = www.bimifc.de) {
+        return 301 https://$host$request_uri;
+    } # managed by Certbot
+
+
+    if ($host = bimifc.de) {
+        return 301 https://$host$request_uri;
+    } # managed by Certbot
+
+
+    listen 80;
+    listen [::]:80;
+    server_name bimifc.de www.bimifc.de;
+    return 404; # managed by Certbot
+}

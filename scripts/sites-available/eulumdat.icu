@@ -1,0 +1,39 @@
+server {
+    server_name eulumdat.icu www.eulumdat.icu;
+    root /var/www/iesna.eu/html;
+    include snippets/error-pages.conf;
+    index index.html;
+
+    location / {
+        try_files $uri $uri/ =404;
+    }
+
+    listen [::]:443 ssl; # managed by Certbot
+    listen 443 ssl; # managed by Certbot
+	access_log  /var/log/nginx/iesna_eu.access.log;
+    error_log  /var/log/nginx/iesna_eu.error.log;
+
+
+    ssl_certificate /etc/letsencrypt/live/eulumdat.icu/fullchain.pem; # managed by Certbot
+    ssl_certificate_key /etc/letsencrypt/live/eulumdat.icu/privkey.pem; # managed by Certbot
+}
+server {
+    if ($host = www.eulumdat.icu) {
+        return 301 https://$host$request_uri;
+    } # managed by Certbot
+
+
+    if ($host = eulumdat.icu) {
+        return 301 https://$host$request_uri;
+    } # managed by Certbot
+
+
+    listen 80;
+    listen [::]:80;
+    server_name eulumdat.icu www.eulumdat.icu;
+    return 404; # managed by Certbot
+
+
+
+
+}
