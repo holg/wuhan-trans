@@ -48,9 +48,23 @@ impl Room {
         self.clients.iter().filter(|c| c.is_some()).count()
     }
 
-    fn all_save_enabled(&self) -> bool {
-        let active: Vec<_> = self.clients.iter().filter_map(|c| c.as_ref()).collect();
-        active.len() >= 2 && active.iter().all(|c| c.save_enabled)
+    fn save_enabled_count(&self) -> usize {
+        self.clients.iter().filter_map(|c| c.as_ref()).filter(|c| c.save_enabled).count()
+    }
+
+    fn should_save(&self) -> bool {
+        self.save_enabled_count() >= 2
+    }
+
+    fn is_slot_save_enabled(&self, slot: usize) -> bool {
+        self.clients.get(slot).and_then(|c| c.as_ref()).map(|c| c.save_enabled).unwrap_or(false)
+    }
+
+    fn slot_name(&self, slot: usize) -> String {
+        self.clients.get(slot)
+            .and_then(|c| c.as_ref())
+            .map(|c| c.name.clone())
+            .unwrap_or_else(|| format!("User {}", slot + 1))
     }
 
     fn active_names(&self) -> Vec<String> {
@@ -98,7 +112,6 @@ struct RelayMessage {
 }
 
 fn deserialize_timestamp<'de, D: serde::Deserializer<'de>>(d: D) -> Result<String, D::Error> {
-    use serde::de::Error;
     let v = serde_json::Value::deserialize(d)?;
     match v {
         serde_json::Value::String(s) => Ok(s),
@@ -259,7 +272,7 @@ async fn handle_ws(socket: WebSocket, code: String, state: AppState) {
                                     if let Some(ref mut c) = room.clients.get_mut(slot).and_then(|c| c.as_mut()) {
                                         c.save_enabled = true;
                                     }
-                                    if room.all_save_enabled() {
+                                    if room.should_save() {
                                         if room.conversation_id.is_none() {
                                             room.conversation_id = Some(state_clone.db.create_conversation(&code_clone2));
                                         }
@@ -283,29 +296,29 @@ async fn handle_ws(socket: WebSocket, code: String, state: AppState) {
 
                     // Data message — broadcast to all others
                     if let Some(room) = state_clone.rooms.get(&code_clone2) {
-                        // Save if enabled
-                        let save_active = room.all_save_enabled();
-                        tracing::debug!("Data msg from slot {slot}, save_active={save_active}, conv_id={:?}", room.conversation_id);
-                        if save_active {
+                        let should_save = room.should_save() && room.is_slot_save_enabled(slot);
+                        let sender_name = room.slot_name(slot);
+                        tracing::debug!("Data msg from slot {slot} ({sender_name}), should_save={should_save}");
+
+                        if should_save {
                             if let Some(conv_id) = room.conversation_id {
                                 match serde_json::from_str::<RelayMessage>(text_str) {
                                     Ok(ref pm) => {
-                                        tracing::info!("Saving message: original='{}', sender='{}'", &pm.original_text.chars().take(50).collect::<String>(), &pm.sender_name);
+                                        let name = if pm.sender_name.is_empty() { &sender_name } else { &pm.sender_name };
+                                        tracing::info!("Saving: '{}'... from {name}", pm.original_text.chars().take(50).collect::<String>());
+                                        state_clone.db.save_message(
+                                            conv_id,
+                                            &pm.original_text,
+                                            "",
+                                            &pm.source_language,
+                                            "",
+                                            &pm.timestamp,
+                                            name,
+                                        );
                                     }
                                     Err(e) => {
                                         tracing::warn!("Failed to parse RelayMessage: {e}");
                                     }
-                                }
-                                if let Ok(pm) = serde_json::from_str::<RelayMessage>(text_str) {
-                                    state_clone.db.save_message(
-                                        conv_id,
-                                        &pm.original_text,
-                                        "",  // no pre-translation in multi-user mode
-                                        &pm.source_language,
-                                        "",
-                                        &pm.timestamp,
-                                        &pm.sender_name,
-                                    );
                                 }
                             }
                         }
