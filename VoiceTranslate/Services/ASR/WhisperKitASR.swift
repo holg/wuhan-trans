@@ -20,6 +20,7 @@ final class WhisperKitASR: ASRService, @unchecked Sendable {
         }
 
         let repo = engine.huggingFaceRepo
+        print("[WhisperKit] Loading model=\(modelName) repo=\(repo ?? "default")")
         let config = WhisperKitConfig(
             model: modelName,
             modelRepo: repo,
@@ -27,7 +28,15 @@ final class WhisperKitASR: ASRService, @unchecked Sendable {
             prewarm: true,
             load: true
         )
-        whisperKit = try await WhisperKit(config)
+        let kit = try await WhisperKit(config)
+
+        // Verify the model actually loaded
+        guard kit.modelState == .loaded else {
+            print("[WhisperKit] Model state: \(kit.modelState) — not loaded!")
+            throw WhisperKitASRError.modelNotLoaded
+        }
+        print("[WhisperKit] ✓ Model loaded, state=\(kit.modelState)")
+        whisperKit = kit
     }
 
     func startRecording(language: SupportedLanguage) async throws {

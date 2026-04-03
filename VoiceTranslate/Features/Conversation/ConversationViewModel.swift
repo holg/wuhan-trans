@@ -129,16 +129,18 @@ final class ConversationViewModel {
             }
         }
 
-        errorMessage = nil
         isRecording = true
 
         Task {
             do {
                 let service = try await getOrCreateASR()
+                errorMessage = nil  // clear only after successful load
                 try await service.startRecording(language: sourceLanguage)
                 print("[VM] Recording started with \(currentEngine.displayName)")
             } catch {
                 isRecording = false
+                asrService = nil
+                loadedEngine = nil
                 errorMessage = "[\(currentEngine.displayName)] \(error.localizedDescription)"
                 print("[VM] startListening failed: \(error)")
             }
