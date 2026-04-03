@@ -5,6 +5,11 @@ struct ContentView: View {
     @State private var showSettings = false
     @State private var showPeerConnection = false
     @State private var peerSession = PeerSessionManager()
+    @State private var relaySession = RelaySessionManager()
+
+    private var isConnected: Bool {
+        peerSession.connectionState == .connected || relaySession.connectionState == .connected
+    }
 
     var body: some View {
         #if os(iOS)
@@ -16,11 +21,11 @@ struct ContentView: View {
                 Button {
                     showPeerConnection = true
                 } label: {
-                    Image(systemName: peerSession.connectionState == .connected
+                    Image(systemName: isConnected
                           ? "antenna.radiowaves.left.and.right.circle.fill"
                           : "antenna.radiowaves.left.and.right")
                         .font(.body)
-                        .foregroundStyle(peerSession.connectionState == .connected ? .green : .primary)
+                        .foregroundStyle(isConnected ? .green : .primary)
                         .padding(10)
                         .background(.ultraThinMaterial, in: Circle())
                 }
@@ -48,8 +53,14 @@ struct ContentView: View {
             }
         }
         .sheet(isPresented: $showPeerConnection) {
-            PeerConnectionView(peerSession: peerSession)
-                .presentationDetents([.medium])
+            PeerConnectionView(
+                peerSession: peerSession,
+                relaySession: relaySession,
+                onSessionChanged: { session in
+                    viewModel.configurePeerSession(session)
+                }
+            )
+            .presentationDetents([.large])
         }
         .onAppear {
             viewModel.configurePeerSession(peerSession)
@@ -66,10 +77,10 @@ struct ContentView: View {
                     Button {
                         showPeerConnection = true
                     } label: {
-                        Image(systemName: peerSession.connectionState == .connected
+                        Image(systemName: isConnected
                               ? "antenna.radiowaves.left.and.right.circle.fill"
                               : "antenna.radiowaves.left.and.right")
-                            .foregroundStyle(peerSession.connectionState == .connected ? .green : .primary)
+                            .foregroundStyle(isConnected ? .green : .primary)
                     }
                 }
             }
@@ -77,8 +88,14 @@ struct ContentView: View {
             ConversationView(viewModel: viewModel)
         }
         .sheet(isPresented: $showPeerConnection) {
-            PeerConnectionView(peerSession: peerSession)
-                .frame(minWidth: 300, minHeight: 250)
+            PeerConnectionView(
+                peerSession: peerSession,
+                relaySession: relaySession,
+                onSessionChanged: { session in
+                    viewModel.configurePeerSession(session)
+                }
+            )
+            .frame(minWidth: 400, minHeight: 350)
         }
         .onAppear {
             viewModel.configurePeerSession(peerSession)

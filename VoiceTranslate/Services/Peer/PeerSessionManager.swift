@@ -14,7 +14,7 @@ enum PeerConnectionState: Sendable {
 
 @Observable
 @MainActor
-final class PeerSessionManager {
+final class PeerSessionManager: SessionTransport {
     var connectionState: PeerConnectionState = .disconnected
     var connectedPeerName: String?
     var onMessageReceived: (@MainActor (PeerMessage) -> Void)?

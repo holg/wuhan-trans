@@ -49,7 +49,7 @@ final class ConversationViewModel {
 
     let downloader = ModelDownloader()
     let phoneConnectivity = PhoneConnectivityService()
-    var peerSession: PeerSessionManager?
+    var peerSession: (any SessionTransport)?
 
     private var asrService: (any ASRService)?
     private let tts = SpeechSynthesizer()
@@ -207,7 +207,7 @@ final class ConversationViewModel {
 
     // MARK: - Peer
 
-    func configurePeerSession(_ session: PeerSessionManager) {
+    func configurePeerSession(_ session: any SessionTransport) {
         self.peerSession = session
         session.onMessageReceived = { [weak self] msg in
             self?.receiveRemoteMessage(msg)
