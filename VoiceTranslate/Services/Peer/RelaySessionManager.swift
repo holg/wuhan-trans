@@ -1,5 +1,8 @@
 import Foundation
 import Observation
+#if canImport(UIKit)
+import UIKit
+#endif
 
 @Observable
 @MainActor
@@ -12,7 +15,9 @@ final class RelaySessionManager: SessionTransport {
     var savingActive = false
     var participants: [String] = []
     var deviceName: String = {
-        #if os(iOS)
+        #if os(watchOS)
+        "Apple Watch"
+        #elseif canImport(UIKit)
         UIDevice.current.name
         #else
         Host.current().localizedName ?? "Mac"
