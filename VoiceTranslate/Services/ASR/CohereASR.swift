@@ -62,18 +62,37 @@ final class CohereASR: ASRService, @unchecked Sendable {
 
         let engine = AVAudioEngine()
         let inputNode = engine.inputNode
-        let recordingFormat = inputNode.outputFormat(forBus: 0)
+        let nativeFormat = inputNode.outputFormat(forBus: 0)
 
-        guard recordingFormat.sampleRate > 0, recordingFormat.channelCount > 0 else {
+        guard nativeFormat.sampleRate > 0, nativeFormat.channelCount > 0 else {
             throw ASRError.audioFormatInvalid
         }
 
-        inputNode.installTap(onBus: 0, bufferSize: 4096, format: recordingFormat) { [weak self] buffer, _ in
+        // Cohere expects 16kHz mono Float32
+        let targetFormat = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 16000, channels: 1, interleaved: false)!
+        let converter = AVAudioConverter(from: nativeFormat, to: targetFormat)
+
+        inputNode.installTap(onBus: 0, bufferSize: 4096, format: nativeFormat) { [weak self] buffer, _ in
             guard let self else { return }
-            let channelData = buffer.floatChannelData![0]
-            let frameCount = Int(buffer.frameLength)
-            let samples = Array(UnsafeBufferPointer(start: channelData, count: frameCount))
-            self.audioBuffer.append(contentsOf: samples)
+
+            if let converter, nativeFormat.sampleRate != 16000 {
+                let ratio = 16000.0 / nativeFormat.sampleRate
+                let outputFrames = AVAudioFrameCount(Double(buffer.frameLength) * ratio)
+                guard let outputBuffer = AVAudioPCMBuffer(pcmFormat: targetFormat, frameCapacity: outputFrames) else { return }
+                var error: NSError?
+                converter.convert(to: outputBuffer, error: &error) { _, outStatus in
+                    outStatus.pointee = .haveData
+                    return buffer
+                }
+                if error == nil, let channelData = outputBuffer.floatChannelData?[0] {
+                    let samples = Array(UnsafeBufferPointer(start: channelData, count: Int(outputBuffer.frameLength)))
+                    self.audioBuffer.append(contentsOf: samples)
+                }
+            } else {
+                guard let channelData = buffer.floatChannelData?[0] else { return }
+                let samples = Array(UnsafeBufferPointer(start: channelData, count: Int(buffer.frameLength)))
+                self.audioBuffer.append(contentsOf: samples)
+            }
         }
 
         engine.prepare()

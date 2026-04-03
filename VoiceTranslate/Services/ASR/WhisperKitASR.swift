@@ -47,18 +47,44 @@ final class WhisperKitASR: ASRService, @unchecked Sendable {
 
         let audioEngine = AVAudioEngine()
         let inputNode = audioEngine.inputNode
-        let recordingFormat = inputNode.outputFormat(forBus: 0)
 
-        guard recordingFormat.sampleRate > 0, recordingFormat.channelCount > 0 else {
+        // WhisperKit requires 16kHz mono Float32
+        guard let whisperFormat = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 16000, channels: 1, interleaved: false) else {
             throw ASRError.audioFormatInvalid
         }
 
-        inputNode.installTap(onBus: 0, bufferSize: 4096, format: recordingFormat) { [weak self] buffer, _ in
+        let nativeFormat = inputNode.outputFormat(forBus: 0)
+        guard nativeFormat.sampleRate > 0, nativeFormat.channelCount > 0 else {
+            throw ASRError.audioFormatInvalid
+        }
+
+        // Install tap with converter to 16kHz if needed
+        let converter = AVAudioConverter(from: nativeFormat, to: whisperFormat)
+
+        inputNode.installTap(onBus: 0, bufferSize: 4096, format: nativeFormat) { [weak self] buffer, _ in
             guard let self else { return }
-            let channelData = buffer.floatChannelData![0]
-            let frameCount = Int(buffer.frameLength)
-            let samples = Array(UnsafeBufferPointer(start: channelData, count: frameCount))
-            self.audioBuffer.append(contentsOf: samples)
+
+            if let converter, nativeFormat.sampleRate != 16000 {
+                // Resample to 16kHz
+                let ratio = 16000.0 / nativeFormat.sampleRate
+                let outputFrames = AVAudioFrameCount(Double(buffer.frameLength) * ratio)
+                guard let outputBuffer = AVAudioPCMBuffer(pcmFormat: whisperFormat, frameCapacity: outputFrames) else { return }
+
+                var error: NSError?
+                converter.convert(to: outputBuffer, error: &error) { _, outStatus in
+                    outStatus.pointee = .haveData
+                    return buffer
+                }
+                if error == nil, let channelData = outputBuffer.floatChannelData?[0] {
+                    let samples = Array(UnsafeBufferPointer(start: channelData, count: Int(outputBuffer.frameLength)))
+                    self.audioBuffer.append(contentsOf: samples)
+                }
+            } else {
+                // Already 16kHz
+                guard let channelData = buffer.floatChannelData?[0] else { return }
+                let samples = Array(UnsafeBufferPointer(start: channelData, count: Int(buffer.frameLength)))
+                self.audioBuffer.append(contentsOf: samples)
+            }
         }
 
         audioEngine.prepare()
