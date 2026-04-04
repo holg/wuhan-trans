@@ -146,11 +146,14 @@ final class CohereASR: ASRService, @unchecked Sendable {
         print("[Cohere] Cross-KV done")
 
         // 4. Fullseq decoder (~109 MB) — get first token
+        // Fullseq decoder expects [1, 438, 1024] but encoder outputs [1, 376, 1024]
+        // Pad hidden states to 438 frames
+        let paddedHiddenStates = padMultiArray(hiddenStates, toDim1: 438)
         let promptIDs = buildPrompt(manifest: manifest)
         let crossMaskFullseq = makeFloat16Mask4D(length: encoderLength, maxLength: 438)
         let fullseqDecoder = try await loadModel("cohere_decoder_fullseq_masked")
         let firstLogits = try runFullseqDecoder(
-            hiddenStates: hiddenStates, promptIDs: promptIDs,
+            hiddenStates: paddedHiddenStates, promptIDs: promptIDs,
             crossMask: crossMaskFullseq, model: fullseqDecoder, manifest: manifest
         )
 
@@ -333,6 +336,31 @@ final class CohereASR: ASRService, @unchecked Sendable {
         let tag = "<|\(lang.whisperCode)|>"
         if let idx = manifest.idToToken.firstIndex(of: tag) { return idx }
         return 62
+    }
+
+    /// Pad a [1, N, D] Float16 MLMultiArray to [1, targetN, D] with zeros
+    private func padMultiArray(_ arr: MLMultiArray, toDim1 targetDim1: Int) -> MLMultiArray {
+        let shape = arr.shape.map { $0.intValue }
+        guard shape.count == 3, shape[1] < targetDim1 else { return arr }
+
+        let dim0 = shape[0]
+        let dim1Current = shape[1]
+        let dim2 = shape[2]
+        let padded = try! MLMultiArray(shape: [dim0 as NSNumber, targetDim1 as NSNumber, dim2 as NSNumber], dataType: .float16)
+
+        let srcPtr = arr.dataPointer.bindMemory(to: Float16.self, capacity: arr.count)
+        let dstPtr = padded.dataPointer.bindMemory(to: Float16.self, capacity: padded.count)
+
+        // Zero fill
+        for i in 0..<padded.count { dstPtr[i] = 0 }
+
+        // Copy original data
+        let copyCount = dim0 * dim1Current * dim2
+        for i in 0..<copyCount {
+            dstPtr[i] = srcPtr[i]
+        }
+
+        return padded
     }
 
     /// 4D float16 mask: [1, 1, 1, maxLength] with 1s up to length, 0s after
