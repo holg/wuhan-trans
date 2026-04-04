@@ -140,20 +140,19 @@ final class CohereASR: ASRService, @unchecked Sendable {
         let (hiddenStates, encoderLength) = try runEncoder(features, featureLength: featureLength, model: encoder)
         print("[Cohere] Encoder done: \(encoderLength) frames")
 
-        // 3. Cross-KV projector (~12 MB)
+        // 3. Cross-KV projector (~12 MB) — expects [1, 376, 1024]
+        let hiddenPadded376 = padMultiArray(hiddenStates, toDim1: 376)
         let crossKV = try await loadModel("cohere_cross_kv_projector")
-        let (crossK, crossV) = try runCrossKVProjector(hiddenStates, model: crossKV)
+        let (crossK, crossV) = try runCrossKVProjector(hiddenPadded376, model: crossKV)
         print("[Cohere] Cross-KV done")
 
-        // 4. Fullseq decoder (~109 MB) — get first token
-        // Fullseq decoder expects [1, 438, 1024] but encoder outputs [1, 376, 1024]
-        // Pad hidden states to 438 frames
-        let paddedHiddenStates = padMultiArray(hiddenStates, toDim1: 438)
+        // 4. Fullseq decoder (~109 MB) — expects [1, 438, 1024]
+        let hiddenPadded438 = padMultiArray(hiddenStates, toDim1: 438)
         let promptIDs = buildPrompt(manifest: manifest)
         let crossMaskFullseq = makeFloat16Mask4D(length: encoderLength, maxLength: 438)
         let fullseqDecoder = try await loadModel("cohere_decoder_fullseq_masked")
         let firstLogits = try runFullseqDecoder(
-            hiddenStates: paddedHiddenStates, promptIDs: promptIDs,
+            hiddenStates: hiddenPadded438, promptIDs: promptIDs,
             crossMask: crossMaskFullseq, model: fullseqDecoder, manifest: manifest
         )
 
