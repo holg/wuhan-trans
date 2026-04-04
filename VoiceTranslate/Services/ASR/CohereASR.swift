@@ -163,6 +163,8 @@ final class CohereASR: ASRService, @unchecked Sendable {
         print("[Cohere] First token: \(firstToken) = \(manifest.idToToken[firstToken])")
 
         // 5. Cached decoder (~109 MB) — autoregressive
+        // Our compiled model takes encoder_hidden_states directly (not pre-computed cross K/V)
+        let hiddenForCached = resizeMultiArray(hiddenStates, toDim1: 376)
         let crossMaskCached = makeFloat16Mask4D(length: encoderLength, maxLength: 376)
         let cachedDecoder = try await loadModel("cohere_decoder_cached")
         var tokens: [Int] = [firstToken]
@@ -174,7 +176,7 @@ final class CohereASR: ASRService, @unchecked Sendable {
             if currentToken == manifest.eosTokenID { break }
 
             let result = try runCachedDecoder(
-                crossK: crossK, crossV: crossV,
+                encoderHiddenStates: hiddenForCached,
                 inputID: currentToken,
                 cacheK: cacheK, cacheV: cacheV,
                 step: promptLen + step,
@@ -285,7 +287,7 @@ final class CohereASR: ASRService, @unchecked Sendable {
     }
 
     private func runCachedDecoder(
-        crossK: MLMultiArray, crossV: MLMultiArray,
+        encoderHiddenStates: MLMultiArray,
         inputID: Int,
         cacheK: MLMultiArray, cacheV: MLMultiArray,
         step: Int,
@@ -299,8 +301,7 @@ final class CohereASR: ASRService, @unchecked Sendable {
         stepArray[0] = NSNumber(value: step)
 
         let input = try MLDictionaryFeatureProvider(dictionary: [
-            "cross_k": MLFeatureValue(multiArray: crossK),
-            "cross_v": MLFeatureValue(multiArray: crossV),
+            "encoder_hidden_states": MLFeatureValue(multiArray: encoderHiddenStates),
             "input_id": MLFeatureValue(multiArray: idArray),
             "cache_k": MLFeatureValue(multiArray: cacheK),
             "cache_v": MLFeatureValue(multiArray: cacheV),
