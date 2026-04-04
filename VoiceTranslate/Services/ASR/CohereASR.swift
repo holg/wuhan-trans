@@ -163,9 +163,8 @@ final class CohereASR: ASRService, @unchecked Sendable {
         print("[Cohere] First token: \(firstToken) = \(manifest.idToToken[firstToken])")
 
         // 5. Cached decoder (~109 MB) — autoregressive
-        // Our compiled model takes encoder_hidden_states directly (not pre-computed cross K/V)
-        let hiddenForCached = resizeMultiArray(hiddenStates, toDim1: 376)
-        let crossMaskCached = makeFloat16Mask4D(length: encoderLength, maxLength: 376)
+        // Our compiled model takes encoder_hidden_states directly at [1, 438, 1024]
+        let crossMaskCached = makeFloat16Mask4D(length: encoderLength, maxLength: 438)
         let cachedDecoder = try await loadModel("cohere_decoder_cached")
         var tokens: [Int] = [firstToken]
         var cacheK = makeZeroFloat16(shape: [8, 8, 140, 128])
@@ -176,7 +175,7 @@ final class CohereASR: ASRService, @unchecked Sendable {
             if currentToken == manifest.eosTokenID { break }
 
             let result = try runCachedDecoder(
-                encoderHiddenStates: hiddenForCached,
+                encoderHiddenStates: hiddenStates,  // full 438 frames
                 inputID: currentToken,
                 cacheK: cacheK, cacheV: cacheV,
                 step: promptLen + step,
