@@ -171,6 +171,9 @@ final class CohereASR: ASRService, @unchecked Sendable {
         var cacheV = makeZeroFloat16(shape: [8, 8, 140, 128])
         var currentToken = firstToken
 
+        var repeatCount = 0
+        var lastToken = -1
+
         for step in 0..<manifest.defaultMaxNewTokens {
             if currentToken == manifest.eosTokenID { break }
 
@@ -184,6 +187,15 @@ final class CohereASR: ASRService, @unchecked Sendable {
             )
 
             let nextToken = argmax(result.logits, offset: 0, count: manifest.vocabSize)
+
+            // Break on repetition loops
+            if nextToken == lastToken {
+                repeatCount += 1
+                if repeatCount >= 3 { break }
+            } else {
+                repeatCount = 0
+            }
+            lastToken = nextToken
             tokens.append(nextToken)
             cacheK = result.cacheK
             cacheV = result.cacheV
@@ -361,6 +373,7 @@ final class CohereASR: ASRService, @unchecked Sendable {
             prompt[4] = langToken
             prompt[5] = langToken
         }
+        print("[Cohere] Prompt: \(prompt.map { manifest.idToToken[$0] })")
         return prompt
     }
 
