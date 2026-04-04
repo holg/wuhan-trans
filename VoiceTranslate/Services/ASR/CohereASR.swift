@@ -271,9 +271,20 @@ final class CohereASR: ASRService, @unchecked Sendable {
         ])
 
         let output = try model.prediction(from: input)
-        let logits = output.featureValue(for: "var_1009")!.multiArrayValue!
 
-        // Shape: [1, 268, 16384] as Float16
+        // Find the logits output by shape (largest multiarray)
+        var logits: MLMultiArray?
+        for name in output.featureNames {
+            if let arr = output.featureValue(for: name)?.multiArrayValue {
+                if logits == nil || arr.count > logits!.count {
+                    logits = arr
+                }
+            }
+        }
+        guard let logits else {
+            throw CohereASRError.inferenceError("Fullseq decoder: no output found")
+        }
+
         let totalCount = logits.count
         let logitsPtr = logits.dataPointer.bindMemory(to: Float16.self, capacity: totalCount)
         return (0..<totalCount).map { Float(logitsPtr[$0]) }
@@ -309,11 +320,31 @@ final class CohereASR: ASRService, @unchecked Sendable {
         ])
 
         let output = try model.prediction(from: input)
-        let logitsMA = output.featureValue(for: "var_2620")!.multiArrayValue!
-        let newCacheK = output.featureValue(for: "var_2623")!.multiArrayValue!
-        let newCacheV = output.featureValue(for: "var_2626")!.multiArrayValue!
 
-        // Shape: [1, 16384] as Float16
+        // Output names differ between pre-compiled and our compiled models
+        // Find outputs by shape: logits=[1,16384], cache_k/v=[8,8,140,128]
+        var logitsMA: MLMultiArray?
+        var newCacheK: MLMultiArray?
+        var newCacheV: MLMultiArray?
+
+        for name in output.featureNames {
+            guard let arr = output.featureValue(for: name)?.multiArrayValue else { continue }
+            let shape = arr.shape.map { $0.intValue }
+            if shape.last == manifest.vocabSize {
+                logitsMA = arr
+            } else if shape.count == 4 && shape[2] == 140 && newCacheK == nil {
+                newCacheK = arr
+            } else if shape.count == 4 && shape[2] == 140 {
+                newCacheV = arr
+            }
+        }
+
+        guard let logitsMA, let newCacheK, let newCacheV else {
+            let names = output.featureNames.joined(separator: ", ")
+            print("[Cohere] Cached decoder outputs: \(names)")
+            throw CohereASRError.inferenceError("Cached decoder output mismatch: \(names)")
+        }
+
         let count = logitsMA.count
         let ptr = logitsMA.dataPointer.bindMemory(to: Float16.self, capacity: count)
         let logits = (0..<count).map { Float(ptr[$0]) }
