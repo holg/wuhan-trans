@@ -166,8 +166,8 @@ final class CohereASR: ASRService, @unchecked Sendable {
         let crossMaskCached = makeFloat16Mask4D(length: encoderLength, maxLength: 376)
         let cachedDecoder = try await loadModel("cohere_decoder_cached")
         var tokens: [Int] = [firstToken]
-        var cacheK = makeZeroFloat16(shape: [8, 8, 108, 128])
-        var cacheV = makeZeroFloat16(shape: [8, 8, 108, 128])
+        var cacheK = makeZeroFloat16(shape: [8, 8, 140, 128])
+        var cacheV = makeZeroFloat16(shape: [8, 8, 140, 128])
         var currentToken = firstToken
 
         for step in 0..<manifest.defaultMaxNewTokens {
