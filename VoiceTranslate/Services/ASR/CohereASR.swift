@@ -138,16 +138,18 @@ final class CohereASR: ASRService, @unchecked Sendable {
         // 2. Encoder (~1.3 GB) — load, run, release
         let encoder = try await loadModel("cohere_encoder")
         let (hiddenStates, encoderLength) = try runEncoder(features, featureLength: featureLength, model: encoder)
-        print("[Cohere] Encoder done: \(encoderLength) frames")
+        print("[Cohere] Encoder done: \(encoderLength) frames, hiddenStates.shape=\(hiddenStates.shape)")
 
         // 3. Cross-KV projector (~12 MB) — expects [1, 376, 1024]
-        let hiddenPadded376 = padMultiArray(hiddenStates, toDim1: 376)
+        let hiddenPadded376 = resizeMultiArray(hiddenStates, toDim1: 376)
+        print("[Cohere] hiddenStates shape: \(hiddenStates.shape), padded376 shape: \(hiddenPadded376.shape)")
         let crossKV = try await loadModel("cohere_cross_kv_projector")
         let (crossK, crossV) = try runCrossKVProjector(hiddenPadded376, model: crossKV)
         print("[Cohere] Cross-KV done")
 
         // 4. Fullseq decoder (~109 MB) — expects [1, 438, 1024]
-        let hiddenPadded438 = padMultiArray(hiddenStates, toDim1: 438)
+        let hiddenPadded438 = resizeMultiArray(hiddenStates, toDim1: 438)
+        print("[Cohere] padded438 shape: \(hiddenPadded438.shape)")
         let promptIDs = buildPrompt(manifest: manifest)
         let crossMaskFullseq = makeFloat16Mask4D(length: encoderLength, maxLength: 438)
         let fullseqDecoder = try await loadModel("cohere_decoder_fullseq_masked")
@@ -337,29 +339,35 @@ final class CohereASR: ASRService, @unchecked Sendable {
         return 62
     }
 
-    /// Pad a [1, N, D] Float16 MLMultiArray to [1, targetN, D] with zeros
-    private func padMultiArray(_ arr: MLMultiArray, toDim1 targetDim1: Int) -> MLMultiArray {
+    /// Resize a [1, N, D] Float16 MLMultiArray to [1, targetN, D] — pads with zeros or truncates
+    private func resizeMultiArray(_ arr: MLMultiArray, toDim1 targetDim1: Int) -> MLMultiArray {
         let shape = arr.shape.map { $0.intValue }
-        guard shape.count == 3, shape[1] < targetDim1 else { return arr }
+        guard shape.count == 3, shape[1] != targetDim1 else { return arr }
 
         let dim0 = shape[0]
         let dim1Current = shape[1]
         let dim2 = shape[2]
-        let padded = try! MLMultiArray(shape: [dim0 as NSNumber, targetDim1 as NSNumber, dim2 as NSNumber], dataType: .float16)
+        let result = try! MLMultiArray(shape: [dim0 as NSNumber, targetDim1 as NSNumber, dim2 as NSNumber], dataType: .float16)
 
         let srcPtr = arr.dataPointer.bindMemory(to: Float16.self, capacity: arr.count)
-        let dstPtr = padded.dataPointer.bindMemory(to: Float16.self, capacity: padded.count)
+        let dstPtr = result.dataPointer.bindMemory(to: Float16.self, capacity: result.count)
 
         // Zero fill
-        for i in 0..<padded.count { dstPtr[i] = 0 }
+        for i in 0..<result.count { dstPtr[i] = 0 }
 
-        // Copy original data
-        let copyCount = dim0 * dim1Current * dim2
-        for i in 0..<copyCount {
-            dstPtr[i] = srcPtr[i]
+        // Copy min(current, target) frames
+        let copyDim1 = min(dim1Current, targetDim1)
+        for b in 0..<dim0 {
+            for f in 0..<copyDim1 {
+                for d in 0..<dim2 {
+                    let srcIdx = b * dim1Current * dim2 + f * dim2 + d
+                    let dstIdx = b * targetDim1 * dim2 + f * dim2 + d
+                    dstPtr[dstIdx] = srcPtr[srcIdx]
+                }
+            }
         }
 
-        return padded
+        return result
     }
 
     /// 4D float16 mask: [1, 1, 1, maxLength] with 1s up to length, 0s after
