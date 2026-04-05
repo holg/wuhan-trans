@@ -376,9 +376,20 @@ final class ConversationViewModel {
             return service
         }
 
+        // Auto-switch: use SenseVoice for Chinese/Japanese/Korean when not using Apple Speech
+        let useSenseVoice = currentEngine != .appleSpeech
+            && SenseVoiceASR.supportedLanguages.contains(sourceLanguage)
+            && sourceLanguage != .english  // SenseVoice supports English but Whisper is better for it
+
+        let effectiveEngine = useSenseVoice ? "SenseVoice" : currentEngine.displayName
+
         // Reuse existing service if already loaded for this engine
-        if let existing = asrService, loadedEngine == currentEngine {
+        if let existing = asrService, loadedEngine == currentEngine, !useSenseVoice {
             print("[VM] Reusing existing \(currentEngine.displayName)")
+            return existing
+        }
+        if let existing = asrService as? SenseVoiceASR, useSenseVoice {
+            print("[VM] Reusing existing SenseVoice")
             return existing
         }
 
@@ -388,20 +399,27 @@ final class ConversationViewModel {
         isLoadingModel = true
         defer { isLoadingModel = false }
 
-        print("[VM] Loading \(currentEngine.displayName)...")
+        print("[VM] Loading \(effectiveEngine)...")
 
         let service: any ASRService
-        switch currentEngine {
-        case .appleSpeech:
-            service = AppleSpeechASR()
-        case .cohereTranscribe:
-            let cohere = CohereASR(modelDirectory: downloader.modelDirectory(for: currentEngine))
-            try await cohere.loadModel()
-            service = cohere
-        case .whisperKitMedium, .whisperKitLargeV3, .whisperKitLargeV3Turbo, .whisperKitBelleLargeZh:
-            let whisper = WhisperKitASR(engine: currentEngine)
-            try await whisper.loadModel()
-            service = whisper
+        if useSenseVoice {
+            // SenseVoice for Chinese/Japanese/Korean
+            let sv = SenseVoiceASR(modelDirectory: downloader.modelDirectory(for: ModelDownloader.SpecialModel.sensevoice))
+            try await sv.loadModel()
+            service = sv
+        } else {
+            switch currentEngine {
+            case .appleSpeech:
+                service = AppleSpeechASR()
+            case .cohereTranscribe:
+                let cohere = CohereASR(modelDirectory: downloader.modelDirectory(for: currentEngine))
+                try await cohere.loadModel()
+                service = cohere
+            case .whisperKitMedium, .whisperKitLargeV3, .whisperKitLargeV3Turbo, .whisperKitBelleLargeZh:
+                let whisper = WhisperKitASR(engine: currentEngine)
+                try await whisper.loadModel()
+                service = whisper
+            }
         }
 
         asrService = service

@@ -94,6 +94,14 @@ final class ModelDownloader {
         Self.modelsDirectory.appending(path: engine.rawValue, directoryHint: .isDirectory)
     }
 
+    func modelDirectory(for specialModel: SpecialModel) -> URL {
+        Self.modelsDirectory.appending(path: specialModel.rawValue, directoryHint: .isDirectory)
+    }
+
+    enum SpecialModel: String {
+        case sensevoice
+    }
+
     func isModelDownloaded(_ engine: ASREngine) -> Bool {
         let dir = modelDirectory(for: engine)
         if engine.isWhisperKit {
