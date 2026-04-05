@@ -159,11 +159,18 @@ final class NLLBTokenizer {
         self.vocab = vocabDict
         self.reverseVocab = Dictionary(uniqueKeysWithValues: vocabDict.map { ($0.value, $0.key) })
 
-        // Extract merges
-        let mergesList = model["merges"] as? [String] ?? []
-        self.merges = mergesList.map { line in
-            let parts = line.split(separator: " ", maxSplits: 1)
-            return (String(parts[0]), String(parts.count > 1 ? parts[1] : ""))
+        // Extract merges — can be [[String, String]] or ["a b"] format
+        if let pairMerges = model["merges"] as? [[String]] {
+            self.merges = pairMerges.compactMap { pair in
+                pair.count == 2 ? (pair[0], pair[1]) : nil
+            }
+        } else if let stringMerges = model["merges"] as? [String] {
+            self.merges = stringMerges.map { line in
+                let parts = line.split(separator: " ", maxSplits: 1)
+                return (String(parts[0]), String(parts.count > 1 ? parts[1] : ""))
+            }
+        } else {
+            self.merges = []
         }
 
         print("[NLLBTokenizer] Loaded \(vocab.count) tokens, \(merges.count) merges")
