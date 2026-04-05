@@ -48,6 +48,10 @@ final class ConversationViewModel {
 
     private var isLoadingSettings = false
     let downloader = ModelDownloader()
+
+    init() {
+        loadSettings()
+    }
     let phoneConnectivity = PhoneConnectivityService()
     var peerSession: (any SessionTransport)?
 
