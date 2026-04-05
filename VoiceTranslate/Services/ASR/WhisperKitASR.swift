@@ -27,13 +27,36 @@ final class WhisperKitASR: ASRService, @unchecked Sendable {
             throw WhisperKitASRError.insufficientMemory(available: mem.availableMemoryMB)
         }
 
-        let config = WhisperKitConfig(
-            model: modelName,
-            modelRepo: repo,
-            verbose: true,
-            prewarm: false,
-            load: true
-        )
+        // Try to find locally cached model first
+        let docsURL = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
+        let cachedModelPath = docsURL
+            .appending(path: "huggingface/models/\(repo ?? "argmaxinc/whisperkit-coreml")/\(modelName)")
+
+        let useLocal = FileManager.default.fileExists(atPath: cachedModelPath.path())
+        print("[WhisperKit] Init: model=\(modelName), local=\(useLocal), path=\(cachedModelPath.path())")
+
+        let config: WhisperKitConfig
+        if useLocal {
+            // Load from local cache — no network, no download verification
+            config = WhisperKitConfig(
+                model: modelName,
+                modelFolder: cachedModelPath.path(),
+                verbose: true,
+                prewarm: false,
+                load: true,
+                download: false
+            )
+        } else {
+            // Download from HuggingFace
+            config = WhisperKitConfig(
+                model: modelName,
+                modelRepo: repo,
+                verbose: true,
+                prewarm: false,
+                load: true
+            )
+        }
+        print("[WhisperKit] Init starting...")
         let kit = try await WhisperKit(config)
 
         let memAfter = MemoryMonitor()
