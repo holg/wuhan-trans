@@ -353,9 +353,9 @@ final class CohereASR: ASRService, @unchecked Sendable {
             let shape = arr.shape.map { $0.intValue }
             if shape.last == manifest.vocabSize {
                 logitsMA = arr
-            } else if shape.count == 4 && shape[2] == 140 && newCacheK == nil {
+            } else if shape.count == 4 && shape[2] == 108 && newCacheK == nil {
                 newCacheK = arr
-            } else if shape.count == 4 && shape[2] == 140 {
+            } else if shape.count == 4 && shape[2] == 108 {
                 newCacheV = arr
             }
         }
