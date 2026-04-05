@@ -18,25 +18,24 @@ final class ConversationViewModel {
 
     var sourceLanguage: SupportedLanguage = .chinese {
         didSet {
-            if oldValue != sourceLanguage {
-                invalidateTranslation()
-                saveSettings()
-                syncLanguagesToWatch()
-            }
+            guard !isLoadingSettings, oldValue != sourceLanguage else { return }
+            invalidateTranslation()
+            saveSettings()
+            syncLanguagesToWatch()
         }
     }
     var targetLanguage: SupportedLanguage = .english {
         didSet {
-            if oldValue != targetLanguage {
-                invalidateTranslation()
-                saveSettings()
-                syncLanguagesToWatch()
-            }
+            guard !isLoadingSettings, oldValue != targetLanguage else { return }
+            invalidateTranslation()
+            saveSettings()
+            syncLanguagesToWatch()
         }
     }
 
     var activeLanguages: [SupportedLanguage] = SupportedLanguage.defaultActiveLanguages {
         didSet {
+            guard !isLoadingSettings else { return }
             if !activeLanguages.contains(sourceLanguage) {
                 sourceLanguage = activeLanguages.first ?? .english
             }
@@ -47,6 +46,7 @@ final class ConversationViewModel {
         }
     }
 
+    private var isLoadingSettings = false
     let downloader = ModelDownloader()
     let phoneConnectivity = PhoneConnectivityService()
     var peerSession: (any SessionTransport)?
@@ -293,7 +293,16 @@ final class ConversationViewModel {
     // MARK: - Persistence
 
     func loadSettings() {
+        isLoadingSettings = true
+        defer { isLoadingSettings = false }
+
         let defaults = UserDefaults.standard
+        // Load active languages first (so source/target are valid in the set)
+        if let data = defaults.data(forKey: "activeLanguages"),
+           let langs = try? JSONDecoder().decode([SupportedLanguage].self, from: data),
+           langs.count == 3 {
+            activeLanguages = langs
+        }
         if let src = defaults.string(forKey: "sourceLanguage"),
            let lang = SupportedLanguage(rawValue: src) {
             sourceLanguage = lang
@@ -302,15 +311,11 @@ final class ConversationViewModel {
            let lang = SupportedLanguage(rawValue: tgt) {
             targetLanguage = lang
         }
-        if let data = defaults.data(forKey: "activeLanguages"),
-           let langs = try? JSONDecoder().decode([SupportedLanguage].self, from: data),
-           langs.count == 3 {
-            activeLanguages = langs
-        }
         if let eng = defaults.string(forKey: "currentEngine"),
            let engine = ASREngine(rawValue: eng) {
             currentEngine = engine
         }
+        print("[VM] Settings loaded: \(sourceLanguage.flag)→\(targetLanguage.flag) slots=\(activeLanguages.map(\.flag)) engine=\(currentEngine.displayName)")
     }
 
     private func saveSettings() {
