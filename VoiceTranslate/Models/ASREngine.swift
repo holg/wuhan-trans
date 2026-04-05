@@ -26,8 +26,8 @@ enum ASREngine: String, CaseIterable, Identifiable, Codable, Sendable {
         case .appleSpeech: "OS-provided — No download"
         case .cohereTranscribe: "~1.4 GB — 14 languages, 6-bit CoreML"
         case .whisperKitMedium: "~500 MB — Good multilingual"
-        case .whisperKitLargeV3: "~1 GB — Best accuracy"
-        case .whisperKitLargeV3Turbo: "~950 MB — Fast, near-best accuracy"
+        case .whisperKitLargeV3: "~947 MB — Best accuracy (quantized)"
+        case .whisperKitLargeV3Turbo: "~954 MB — Fast, near-best (quantized)"
         case .whisperKitBelleLargeZh: "~2.9 GB — Best Chinese accuracy"
         }
     }
@@ -47,8 +47,8 @@ enum ASREngine: String, CaseIterable, Identifiable, Codable, Sendable {
     var whisperKitModelName: String? {
         switch self {
         case .whisperKitMedium: "openai_whisper-medium"
-        case .whisperKitLargeV3: "openai_whisper-large-v3"
-        case .whisperKitLargeV3Turbo: "openai_whisper-large-v3_turbo"
+        case .whisperKitLargeV3: "openai_whisper-large-v3_947MB"
+        case .whisperKitLargeV3Turbo: "openai_whisper-large-v3_turbo_954MB"
         case .whisperKitBelleLargeZh: "BELLE-2_Belle-whisper-large-v3-zh"
         default: nil
         }
