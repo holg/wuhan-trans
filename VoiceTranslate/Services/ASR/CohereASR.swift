@@ -109,6 +109,15 @@ final class CohereASR: ASRService, @unchecked Sendable {
         isRecording = false
 
         guard !audioBuffer.isEmpty else { return "" }
+
+        // Check audio level
+        let maxAmp = audioBuffer.map { abs($0) }.max() ?? 0
+        let rms = sqrt(audioBuffer.map { $0 * $0 }.reduce(0, +) / Float(audioBuffer.count))
+        print("[Cohere] Audio: \(audioBuffer.count) samples, maxAmp=\(maxAmp), rms=\(rms)")
+        if maxAmp < 0.001 {
+            print("[Cohere] WARNING: Audio appears to be silence!")
+        }
+
         return try await transcribe(audioBuffer)
     }
 
@@ -167,8 +176,8 @@ final class CohereASR: ASRService, @unchecked Sendable {
         let crossMaskCached = makeFloat16Mask4D(length: encoderLength, maxLength: 438)
         let cachedDecoder = try await loadModel("cohere_decoder_cached")
         var tokens: [Int] = [firstToken]
-        var cacheK = makeZeroFloat16(shape: [8, 8, 140, 128])
-        var cacheV = makeZeroFloat16(shape: [8, 8, 140, 128])
+        var cacheK = makeZeroFloat16(shape: [8, 8, 108, 128])
+        var cacheV = makeZeroFloat16(shape: [8, 8, 108, 128])
         var currentToken = firstToken
 
         var repeatCount = 0
@@ -259,7 +268,7 @@ final class CohereASR: ASRService, @unchecked Sendable {
         hiddenStates: MLMultiArray, promptIDs: [Int],
         crossMask: MLMultiArray, model: MLModel, manifest: CohereManifest
     ) throws -> [Float] {
-        let maxLen = 268  // actual model input size
+        let maxLen = 108  // actual model input size
 
         let inputIDs = try MLMultiArray(shape: [1, maxLen as NSNumber], dataType: .int32)
         let decoderMask = try MLMultiArray(shape: [1, maxLen as NSNumber], dataType: .int32)
