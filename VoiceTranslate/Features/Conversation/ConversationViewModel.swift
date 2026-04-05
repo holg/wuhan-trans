@@ -101,25 +101,21 @@ final class ConversationViewModel {
         Task {
             defer { isProcessing = false }
             do {
-                guard let session = translationSession else {
-                    errorMessage = "Translation not ready"
-                    return
-                }
-                nonisolated(unsafe) let s = session
-                let response = try await s.translate(text)
+                let translated = try await translateText(text, from: sourceLanguage, to: targetLanguage)
 
                 let message = ConversationMessage(
                     originalText: text,
-                    translatedText: response.targetText,
+                    translatedText: translated,
                     sourceLanguage: sourceLanguage,
                     targetLanguage: targetLanguage,
-                    asrEngine: "typed"
+                    asrEngine: "typed",
+                    translationEngine: translationEngine.displayName
                 )
                 messages.append(message)
 
                 sendToPeer(message)
 
-                await tts.speak(text: response.targetText, language: targetLanguage)
+                await tts.speak(text: translated, language: targetLanguage)
             } catch {
                 errorMessage = error.localizedDescription
             }
@@ -179,27 +175,22 @@ final class ConversationViewModel {
                     return
                 }
 
-                guard let session = translationSession else {
-                    isProcessing = false
-                    errorMessage = "Translation not ready"
-                    return
-                }
-
-                nonisolated(unsafe) let s = session
-                let response = try await s.translate(transcript)
+                let translated = try await translateText(transcript, from: sourceLanguage, to: targetLanguage)
 
                 let message = ConversationMessage(
                     originalText: transcript,
-                    translatedText: response.targetText,
+                    translatedText: translated,
                     sourceLanguage: sourceLanguage,
-                    targetLanguage: targetLanguage
+                    targetLanguage: targetLanguage,
+                    asrEngine: currentEngine.displayName,
+                    translationEngine: translationEngine.displayName
                 )
                 messages.append(message)
                 isProcessing = false
 
                 sendToPeer(message)
 
-                await tts.speak(text: response.targetText, language: targetLanguage)
+                await tts.speak(text: translated, language: targetLanguage)
             } catch {
                 isProcessing = false
                 errorMessage = error.localizedDescription
@@ -226,18 +217,15 @@ final class ConversationViewModel {
             throw NSError(domain: "VoiceTranslate", code: 0, userInfo: [NSLocalizedDescriptionKey: "No speech detected"])
         }
 
-        guard let session = translationSession else {
-            throw NSError(domain: "VoiceTranslate", code: 1, userInfo: [NSLocalizedDescriptionKey: "Translation not ready"])
-        }
-
-        nonisolated(unsafe) let s = session
-        let response = try await s.translate(transcript)
+        let translated = try await translateText(transcript, from: src, to: tgt)
 
         let message = ConversationMessage(
             originalText: transcript,
-            translatedText: response.targetText,
+            translatedText: translated,
             sourceLanguage: src,
-            targetLanguage: tgt
+            targetLanguage: tgt,
+            asrEngine: currentEngine.displayName,
+            translationEngine: translationEngine.displayName
         )
         messages.append(message)
 
@@ -245,7 +233,7 @@ final class ConversationViewModel {
             try? peer.send(PeerMessage(from: message))
         }
 
-        await tts.speak(text: response.targetText, language: tgt)
+        await tts.speak(text: translated, language: tgt)
         return message
     }
 
@@ -275,19 +263,19 @@ final class ConversationViewModel {
             // Relay mode: translate locally into our target language
             Task {
                 do {
-                    guard let session = translationSession else { return }
-                    nonisolated(unsafe) let s = session
-                    let response = try await s.translate(peerMessage.originalText)
+                    let translated = try await translateText(peerMessage.originalText, from: peerMessage.sourceLanguage, to: targetLanguage)
 
                     let message = ConversationMessage(
                         originalText: peerMessage.originalText,
-                        translatedText: response.targetText,
+                        translatedText: translated,
                         sourceLanguage: peerMessage.sourceLanguage,
                         targetLanguage: targetLanguage,
-                        isRemote: true
+                        isRemote: true,
+                        asrEngine: "remote",
+                        translationEngine: translationEngine.displayName
                     )
                     messages.append(message)
-                    await tts.speak(text: response.targetText, language: targetLanguage)
+                    await tts.speak(text: translated, language: targetLanguage)
                 } catch {
                     print("[VM] Remote translation failed: \(error)")
                 }
