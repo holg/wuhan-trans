@@ -31,7 +31,7 @@ final class WhisperKitASR: ASRService, @unchecked Sendable {
             model: modelName,
             modelRepo: repo,
             verbose: true,
-            prewarm: true,
+            prewarm: false,
             load: true
         )
         let kit = try await WhisperKit(config)
