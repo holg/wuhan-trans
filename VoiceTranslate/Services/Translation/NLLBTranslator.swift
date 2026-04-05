@@ -91,19 +91,23 @@ final class NLLBTranslator: @unchecked Sendable {
             }
 
             // Get next token: argmax of logits at position (currentTokens.count - 1)
-            let vocabSize = 256206
+            let shape = logits.shape.map { $0.intValue }
+            let vocabSize = shape.last ?? 256206
             let pos = currentTokens.count - 1
-            let offset = pos * vocabSize
-            let ptr = logits.dataPointer.bindMemory(to: Float16.self, capacity: logits.count)
 
+            // Use MLMultiArray subscript for correct stride handling
             var maxVal: Float = -Float.infinity
             var maxIdx: Int32 = 0
             for i in 0..<vocabSize {
-                let val = Float(ptr[offset + i])
+                let val = logits[[0, pos, i] as [NSNumber]].floatValue
                 if val > maxVal {
                     maxVal = val
                     maxIdx = Int32(i)
                 }
+            }
+
+            if currentTokens.count == 3 {
+                print("[NLLB] First decode: pos=\(pos), vocabSize=\(vocabSize), maxIdx=\(maxIdx), logits.shape=\(shape)")
             }
 
             if maxIdx == eosTokenID { break }
