@@ -40,6 +40,10 @@ final class ModelDownloader {
         Self.modelsDirectory.appending(path: engine.localDirectoryName, directoryHint: .isDirectory)
     }
 
+    func modelDirectory(for engine: TranslationEngine) -> URL {
+        Self.modelsDirectory.appending(path: engine.rawValue, directoryHint: .isDirectory)
+    }
+
     func isModelDownloaded(_ engine: ASREngine) -> Bool {
         let dir = modelDirectory(for: engine)
         if engine.isWhisperKit {

@@ -20,6 +20,31 @@ struct SettingsView: View {
                 )
             }
 
+            Section("Translation Engine") {
+                ForEach(TranslationEngine.allCases) { engine in
+                    HStack {
+                        VStack(alignment: .leading, spacing: 2) {
+                            HStack(spacing: 6) {
+                                Text(engine.displayName)
+                                if engine == viewModel.translationEngine {
+                                    Image(systemName: "checkmark")
+                                        .font(.caption)
+                                        .foregroundStyle(.blue)
+                                }
+                            }
+                            Text(engine.modelDescription)
+                                .font(.caption)
+                                .foregroundStyle(engine == .apple ? .orange : .green)
+                        }
+                        Spacer()
+                    }
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        viewModel.translationEngine = engine
+                    }
+                }
+            }
+
             Section("Quick Select Languages") {
                 LanguagePickerView(activeLanguages: $viewModel.activeLanguages)
             }

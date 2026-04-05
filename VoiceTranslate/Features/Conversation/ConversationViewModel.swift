@@ -11,10 +11,17 @@ final class ConversationViewModel {
     var isLoadingModel = false
     var currentEngine: ASREngine = ASREngine.platformDefault
     var loadedEngine: ASREngine?
+    var translationEngine: TranslationEngine = .apple {
+        didSet {
+            guard !isLoadingSettings, oldValue != translationEngine else { return }
+            saveSettings()
+        }
+    }
     var errorMessage: String?
 
     var translationConfig: TranslationSession.Configuration?
     var translationSession: TranslationSession?
+    private var nllbTranslator: NLLBTranslator?
 
     var sourceLanguage: SupportedLanguage = .chinese {
         didSet {
@@ -320,7 +327,11 @@ final class ConversationViewModel {
            let engine = ASREngine(rawValue: eng) {
             currentEngine = engine
         }
-        print("[VM] Settings loaded: \(sourceLanguage.flag)→\(targetLanguage.flag) slots=\(activeLanguages.map(\.flag)) engine=\(currentEngine.displayName)")
+        if let te = defaults.string(forKey: "translationEngine"),
+           let engine = TranslationEngine(rawValue: te) {
+            translationEngine = engine
+        }
+        print("[VM] Settings loaded: translation=\(translationEngine.displayName) \(sourceLanguage.flag)→\(targetLanguage.flag) slots=\(activeLanguages.map(\.flag)) engine=\(currentEngine.displayName)")
     }
 
     private func saveSettings() {
@@ -331,10 +342,32 @@ final class ConversationViewModel {
             defaults.set(data, forKey: "activeLanguages")
         }
         defaults.set(currentEngine.rawValue, forKey: "currentEngine")
+        defaults.set(translationEngine.rawValue, forKey: "translationEngine")
     }
 
     private func syncLanguagesToWatch() {
         phoneConnectivity.syncLanguages(source: sourceLanguage, target: targetLanguage)
+    }
+
+    /// Translate text using the selected translation engine
+    func translateText(_ text: String, from source: SupportedLanguage, to target: SupportedLanguage) async throws -> String {
+        switch translationEngine {
+        case .apple:
+            guard let session = translationSession else {
+                throw NSError(domain: "VoiceTranslate", code: 0, userInfo: [NSLocalizedDescriptionKey: "Apple Translation not ready"])
+            }
+            nonisolated(unsafe) let s = session
+            let response = try await s.translate(text)
+            return response.targetText
+        case .nllb:
+            if nllbTranslator == nil || !nllbTranslator!.isLoaded {
+                let dir = downloader.modelDirectory(for: TranslationEngine.nllb)
+                let translator = NLLBTranslator(modelDirectory: dir)
+                try await translator.loadModels()
+                nllbTranslator = translator
+            }
+            return try await nllbTranslator!.translate(text: text, from: source, to: target)
+        }
     }
 
     private func invalidateTranslation() {
