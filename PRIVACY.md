@@ -9,7 +9,7 @@ VoiceTranslate processes all data on your device. No data is collected, stored, 
 ## Data Processing
 
 - **Voice recordings** are processed entirely on-device using on-device speech recognition (Apple Speech, WhisperKit, or Cohere Transcribe). Recordings are not stored after transcription.
-- **Translations** are performed on-device using the Apple Translation framework. No text is sent to external services.
+- **Translations** currently use the Apple Translation framework. While Apple states this runs on-device, no GDPR-compliant data processing agreement (AVV/DPA) is available from Apple for this framework. A fully independent translation engine (NLLB-200) is planned to ensure complete GDPR compliance.
 - **Text-to-speech** uses the built-in AVSpeechSynthesizer. No data leaves your device.
 
 ## Paired Device Mode

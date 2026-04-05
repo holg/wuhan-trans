@@ -105,7 +105,8 @@ final class ConversationViewModel {
                     originalText: text,
                     translatedText: response.targetText,
                     sourceLanguage: sourceLanguage,
-                    targetLanguage: targetLanguage
+                    targetLanguage: targetLanguage,
+                    asrEngine: "typed"
                 )
                 messages.append(message)
 

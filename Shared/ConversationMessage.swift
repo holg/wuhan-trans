@@ -8,6 +8,8 @@ struct ConversationMessage: Identifiable, Sendable, Codable {
     let targetLanguage: SupportedLanguage
     let timestamp: Date
     let isRemote: Bool
+    let asrEngine: String      // e.g. "Whisper Large v3", "typed", "remote"
+    let translationEngine: String  // e.g. "Apple Translation (on-device)"
 
     init(
         id: UUID = UUID(),
@@ -16,7 +18,9 @@ struct ConversationMessage: Identifiable, Sendable, Codable {
         sourceLanguage: SupportedLanguage,
         targetLanguage: SupportedLanguage,
         timestamp: Date = Date(),
-        isRemote: Bool = false
+        isRemote: Bool = false,
+        asrEngine: String = "",
+        translationEngine: String = "Apple Translation (on-device)"
     ) {
         self.id = id
         self.originalText = originalText
@@ -25,6 +29,8 @@ struct ConversationMessage: Identifiable, Sendable, Codable {
         self.targetLanguage = targetLanguage
         self.timestamp = timestamp
         self.isRemote = isRemote
+        self.asrEngine = asrEngine
+        self.translationEngine = translationEngine
     }
 
     init(peerMessage: PeerMessage) {
@@ -35,5 +41,7 @@ struct ConversationMessage: Identifiable, Sendable, Codable {
         self.targetLanguage = peerMessage.targetLanguage
         self.timestamp = peerMessage.timestamp
         self.isRemote = true
+        self.asrEngine = "remote"
+        self.translationEngine = "Apple Translation (on-device)"
     }
 }
