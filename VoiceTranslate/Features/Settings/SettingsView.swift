@@ -89,6 +89,46 @@ struct SettingsView: View {
                 }
             }
 
+            Section("Chinese ASR (auto-selects for zh/ja/ko)") {
+                HStack {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("SenseVoice Small")
+                        Text("~430 MB — Chinese/Japanese/Korean optimized")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    switch viewModel.downloader.senseVoiceState {
+                    case .notDownloaded:
+                        Button {
+                            viewModel.downloader.downloadSenseVoice()
+                        } label: {
+                            Image(systemName: "arrow.down.circle")
+                                .font(.title3)
+                                .foregroundStyle(.blue)
+                        }
+                        .buttonStyle(.plain)
+                    case .downloading(let progress):
+                        CircularProgressView(progress: progress)
+                            .frame(width: 28, height: 28)
+                    case .downloaded:
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.title3)
+                            .foregroundStyle(.green)
+                    case .failed(let msg):
+                        Button {
+                            viewModel.downloader.downloadSenseVoice()
+                        } label: {
+                            Image(systemName: "exclamationmark.triangle")
+                                .font(.title3)
+                                .foregroundStyle(.red)
+                        }
+                        .buttonStyle(.plain)
+                        .help(msg)
+                    }
+                }
+            }
+
             Section("Quick Select Languages") {
                 LanguagePickerView(activeLanguages: $viewModel.activeLanguages)
             }

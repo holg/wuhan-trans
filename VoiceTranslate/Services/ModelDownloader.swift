@@ -23,6 +23,7 @@ final class ModelDownloader {
     }
 
     var nllbState: DownloadState = .notDownloaded
+    var senseVoiceState: DownloadState = .notDownloaded
 
     init() {
         for engine in ASREngine.allCases {
@@ -31,11 +32,64 @@ final class ModelDownloader {
             }
         }
         nllbState = isNLLBDownloaded() ? .downloaded : .notDownloaded
+        senseVoiceState = isSenseVoiceDownloaded() ? .downloaded : .notDownloaded
     }
 
     func state(for engine: ASREngine) -> DownloadState {
         if !engine.requiresModelDownload { return .downloaded }
         return engineStates[engine] ?? .notDownloaded
+    }
+
+    func isSenseVoiceDownloaded() -> Bool {
+        let dir = modelDirectory(for: SpecialModel.sensevoice)
+        return FileManager.default.fileExists(atPath: dir.appending(path: "SenseVoiceSmall.mlmodelc").path())
+            && FileManager.default.fileExists(atPath: dir.appending(path: "tokens.bpe.model").path())
+    }
+
+    func downloadSenseVoice() {
+        guard senseVoiceState != .downloaded else { return }
+        if case .downloading = senseVoiceState { return }
+
+        senseVoiceState = .downloading(progress: 0)
+
+        Task {
+            do {
+                try await downloadSenseVoiceModels()
+                senseVoiceState = .downloaded
+            } catch {
+                if !Task.isCancelled {
+                    senseVoiceState = .failed(error.localizedDescription)
+                }
+            }
+        }
+    }
+
+    private func downloadSenseVoiceModels() async throws {
+        let repo = "holgt/sensevoice-small-coreml"
+        let destDir = modelDirectory(for: SpecialModel.sensevoice)
+        try FileManager.default.createDirectory(at: destDir, withIntermediateDirectories: true)
+
+        let items = [
+            ("SenseVoiceSmall.mlmodelc", true),   // directory
+            ("am.mvn", false),                      // file
+            ("tokens.bpe.model", false),             // file
+        ]
+
+        for (index, (item, isDir)) in items.enumerated() {
+            try Task.checkCancellation()
+            let destItem = destDir.appending(path: item)
+            if FileManager.default.fileExists(atPath: destItem.path()) {
+                senseVoiceState = .downloading(progress: Double(index + 1) / Double(items.count))
+                continue
+            }
+            if isDir {
+                try await downloadDirectory(repo: repo, path: item, to: destItem)
+            } else {
+                let url = URL(string: "https://huggingface.co/\(repo)/resolve/main/\(item)")!
+                try await downloadFile(from: url, to: destItem, engine: .appleSpeech, fileIndex: index, totalFiles: items.count)
+            }
+            senseVoiceState = .downloading(progress: Double(index + 1) / Double(items.count))
+        }
     }
 
     func isNLLBDownloaded() -> Bool {
