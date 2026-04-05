@@ -22,18 +22,68 @@ final class ModelDownloader {
         return docs.appending(path: "Models", directoryHint: .isDirectory)
     }
 
+    var nllbState: DownloadState = .notDownloaded
+
     init() {
-        // Check which models are already downloaded
         for engine in ASREngine.allCases {
             if engine.requiresModelDownload {
                 engineStates[engine] = isModelDownloaded(engine) ? .downloaded : .notDownloaded
             }
         }
+        nllbState = isNLLBDownloaded() ? .downloaded : .notDownloaded
     }
 
     func state(for engine: ASREngine) -> DownloadState {
         if !engine.requiresModelDownload { return .downloaded }
         return engineStates[engine] ?? .notDownloaded
+    }
+
+    func isNLLBDownloaded() -> Bool {
+        let dir = modelDirectory(for: TranslationEngine.nllb)
+        return FileManager.default.fileExists(atPath: dir.appending(path: "NLLB_Encoder_256.mlmodelc").path())
+            && FileManager.default.fileExists(atPath: dir.appending(path: "tokenizer/tokenizer.json").path())
+    }
+
+    func downloadNLLB() {
+        guard nllbState != .downloaded else { return }
+        if case .downloading = nllbState { return }
+
+        nllbState = .downloading(progress: 0)
+
+        let task = Task {
+            do {
+                try await downloadNLLBModels()
+                nllbState = .downloaded
+            } catch {
+                if !Task.isCancelled {
+                    nllbState = .failed(error.localizedDescription)
+                }
+            }
+        }
+        activeTasks[.appleSpeech] = task // reuse slot, only one NLLB download at a time
+    }
+
+    private func downloadNLLBModels() async throws {
+        let repo = "holgt/nllb-200-coreml"
+        let destDir = modelDirectory(for: TranslationEngine.nllb)
+        try FileManager.default.createDirectory(at: destDir, withIntermediateDirectories: true)
+
+        let items = [
+            "NLLB_Encoder_256.mlmodelc",
+            "NLLB_Decoder_256.mlmodelc",
+            "tokenizer",
+        ]
+
+        for (index, item) in items.enumerated() {
+            try Task.checkCancellation()
+            let destItem = destDir.appending(path: item)
+            if FileManager.default.fileExists(atPath: destItem.path()) {
+                nllbState = .downloading(progress: Double(index + 1) / Double(items.count))
+                continue
+            }
+            try await downloadDirectory(repo: repo, path: item, to: destItem)
+            nllbState = .downloading(progress: Double(index + 1) / Double(items.count))
+        }
     }
 
     func modelDirectory(for engine: ASREngine) -> URL {

@@ -32,15 +32,59 @@ struct SettingsView: View {
                                         .foregroundStyle(.blue)
                                 }
                             }
-                            Text(engine.modelDescription)
-                                .font(.caption)
-                                .foregroundStyle(engine == .apple ? .orange : .green)
+                            if engine == .nllb {
+                                switch viewModel.downloader.nllbState {
+                                case .failed(let msg):
+                                    Text(msg).font(.caption).foregroundStyle(.red)
+                                default:
+                                    Text(engine.modelDescription)
+                                        .font(.caption)
+                                        .foregroundStyle(.green)
+                                }
+                            } else {
+                                Text(engine.modelDescription)
+                                    .font(.caption)
+                                    .foregroundStyle(.orange)
+                            }
                         }
                         Spacer()
+                        if engine == .nllb {
+                            switch viewModel.downloader.nllbState {
+                            case .notDownloaded:
+                                Button {
+                                    viewModel.downloader.downloadNLLB()
+                                } label: {
+                                    Image(systemName: "arrow.down.circle")
+                                        .font(.title3)
+                                        .foregroundStyle(.blue)
+                                }
+                                .buttonStyle(.plain)
+                            case .downloading(let progress):
+                                CircularProgressView(progress: progress)
+                                    .frame(width: 28, height: 28)
+                            case .downloaded:
+                                Image(systemName: "checkmark.circle.fill")
+                                    .font(.title3)
+                                    .foregroundStyle(.green)
+                            case .failed:
+                                Button {
+                                    viewModel.downloader.downloadNLLB()
+                                } label: {
+                                    Image(systemName: "exclamationmark.triangle")
+                                        .font(.title3)
+                                        .foregroundStyle(.red)
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
                     }
                     .contentShape(Rectangle())
                     .onTapGesture {
-                        viewModel.translationEngine = engine
+                        if engine == .nllb && viewModel.downloader.nllbState != .downloaded {
+                            viewModel.downloader.downloadNLLB()
+                        } else {
+                            viewModel.translationEngine = engine
+                        }
                     }
                 }
             }
