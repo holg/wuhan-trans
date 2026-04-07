@@ -141,7 +141,12 @@ final class SenseVoiceASR: ASRService, @unchecked Sendable {
 
         // 1. Compute mel spectrogram (80 bands, 25ms window, 10ms shift at 16kHz)
         let melFeatures = computeMelSpectrogram(audio: audio, sampleRate: 16000, nMels: 80)
-        print("[SenseVoice] Mel: \(melFeatures.count) frames x 80")
+        if let first = melFeatures.first {
+            let range = (first.min() ?? 0, first.max() ?? 0)
+            print("[SenseVoice] Mel: \(melFeatures.count) frames x 80, first frame range: [\(range.0), \(range.1)]")
+        } else {
+            print("[SenseVoice] Mel: 0 frames")
+        }
 
         // 2. LFR (Low Frame Rate) — stack 7 frames, skip 6
         let lfrFeatures = applyLFR(melFeatures, lfrM: 7, lfrN: 6)
@@ -247,13 +252,10 @@ final class SenseVoiceASR: ASRService, @unchecked Sendable {
 
         vDSP_fft_zrip(fftSetup, &splitComplex, 1, log2n, FFTDirection(FFT_FORWARD))
 
+        // Power spectrum (magnitude squared, no 1/N scaling — matches Kaldi)
         var magnitudes = [Float](repeating: 0, count: n / 2 + 1)
         vDSP_zvmags(&splitComplex, 1, &magnitudes, 1, vDSP_Length(n / 2))
         magnitudes[n / 2] = splitComplex.imagp[0] * splitComplex.imagp[0]
-
-        // Convert to power spectrum
-        var scale = Float(1.0 / Float(n))
-        vDSP_vsmul(magnitudes, 1, &scale, &magnitudes, 1, vDSP_Length(n / 2 + 1))
 
         return magnitudes
     }
@@ -285,8 +287,8 @@ final class SenseVoiceASR: ASRService, @unchecked Sendable {
                 melFrame[m] += magnitudes[k] * weight
             }
 
-            // Log mel
-            melFrame[m] = log(max(melFrame[m], 1e-10))
+            // Log mel (Kaldi-style: energy floor = 1.0)
+            melFrame[m] = log(max(melFrame[m], 1.0))
         }
 
         return melFrame
